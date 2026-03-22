@@ -17,17 +17,17 @@ body {
   width: 320px;
   padding: 24px;
   background: #f8f9fa;
-  border-right: 2px solid #C9A227;
+  border-right: 2px solid #008542;
   overflow-y: auto;
   flex-shrink: 0;
 }
 
 .controls-panel h1 {
   font-size: 18px;
-  color: #00A66E;
+  color: #FDC82F;
   margin-bottom: 24px;
   padding-bottom: 12px;
-  border-bottom: 2px solid #C9A227;
+  border-bottom: 2px solid #008542;
 }
 
 /* Form Controls */
@@ -39,7 +39,7 @@ body {
   display: block;
   font-size: 12px;
   font-weight: 600;
-  color: #C9A227;
+  color: #FDC82F;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 6px;
@@ -53,12 +53,13 @@ body {
   border-radius: 8px;
   font-size: 14px;
   transition: border-color 0.2s;
+  background: #fff;
 }
 
 .control-group input[type="text"]:focus,
 .control-group select:focus {
   outline: none;
-  border-color: #C9A227;
+  border-color: #008542;
 }
 
 .control-group input[type="text"]:disabled {
@@ -73,11 +74,47 @@ body {
   border-radius: 8px;
   cursor: pointer;
   padding: 4px;
+  background: #fff;
 }
 
 .control-group input[type="range"] {
   width: 100%;
   margin-top: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 8px;
+  background: #ddd;
+  border-radius: 4px;
+  outline: none;
+}
+
+.control-group input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  background: #008542;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.control-group input[type="range"]::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  background: #008542;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.scale-ppi {
+  font-size: 11px;
+  color: #888;
+  margin-top: 4px;
+  text-align: right;
 }
 
 .control-row {
@@ -100,12 +137,12 @@ body {
 .checkbox-group input[type="checkbox"] {
   width: 18px;
   height: 18px;
-  accent-color: #00A66E;
+  accent-color: #FDC82F;
 }
 
 .checkbox-group label {
   font-size: 14px;
-  color: #333;
+  color: #FDC82F;
   text-transform: none;
   margin: 0;
 }
@@ -128,7 +165,7 @@ body {
   width: 100%;
   padding: 10px 12px;
   background: #fff;
-  border: 2px dashed #C9A227;
+  border: 2px dashed #008542;
   border-radius: 8px;
   text-align: center;
   color: #666;
@@ -155,12 +192,12 @@ body {
 .btn:hover { opacity: 0.9; }
 
 .btn-primary {
-  background: #00A66E;
+  background: #FDC82F;
   color: #fff;
 }
 
 .btn-secondary {
-  background: #C9A227;
+  background: #008542;
   color: #fff;
 }
 
@@ -221,7 +258,7 @@ body {
   .controls-panel {
     width: 100%;
     border-right: none;
-    border-bottom: 2px solid #C9A227;
+    border-bottom: 2px solid #008542;
   }
 
   .preview-area { min-height: 400px; }

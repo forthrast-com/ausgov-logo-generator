@@ -32,6 +32,7 @@ const elements = {
   resetImage: document.getElementById('resetImage'),
   scale: document.getElementById('scale'),
   scaleValue: document.getElementById('scaleValue'),
+  ppiValue: document.getElementById('ppiValue'),
   showIsolation: document.getElementById('showIsolation'),
   exportPNG: document.getElementById('exportPNG'),
   exportJPEG: document.getElementById('exportJPEG'),
@@ -47,7 +48,8 @@ const BASE = {
   fontSize2: 13,
   padding: 20,
   gap: 12,
-  underlineHeight: 2,
+  underlineHeight: 1,
+  underlineGap: 2,  // Small gap between Line 1 and underline
   lineSpacing: 4
 };
 
@@ -105,7 +107,20 @@ async function loadDefaultCoA() {
     const response = await fetch('coat-of-arms.svg');
     const svgText = await response.text();
     state.coaDataUri = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgText)));
-    renderPreview();
+
+    // Also create PNG version for SVG export (SVG-in-SVG often doesn't render in viewers)
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      // High resolution for quality
+      canvas.width = img.width * 2 || 400;
+      canvas.height = img.height * 2 || 500;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      state.coaPngDataUri = canvas.toDataURL('image/png');
+      renderPreview();
+    };
+    img.src = state.coaDataUri;
   } catch (e) {
     console.error('Failed to load default coat of arms:', e);
   }
@@ -176,7 +191,7 @@ function escapeXml(str) {
   }[c]));
 }
 
-function buildLogoSVG(scale, showIsolation = false) {
+function buildLogoSVG(scale, showIsolation = false, forExport = false) {
   const colors = getEffectiveColors();
   const tempCanvas = document.createElement('canvas');
   const ctx = tempCanvas.getContext('2d');
@@ -198,7 +213,7 @@ function buildLogoSVG(scale, showIsolation = false) {
     hasLine1 = state.line1.trim().length > 0;
     hasLine2 = state.line2.trim().length > 0;
     hasLine3 = state.line3.trim().length > 0;
-    hasUnderline = hasLine2;
+    hasUnderline = hasLine1 && (hasLine2 || hasLine3);
   } else {
     hasLine2 = state.textMode === 'department' || state.textMode === 'hierarchy';
     hasLine3 = state.textMode === 'hierarchy';
@@ -246,8 +261,8 @@ function buildLogoSVG(scale, showIsolation = false) {
   // Calculate text block dimensions (always stacked, strip just disables wrapping)
   let textBlockWidth = Math.max(line1Width, line2Width, line3Width);
   let textBlockHeight = hasLine1 ? fontSize1 : 0;
-  // Underline has lineSpacing above and below (same as between text lines)
-  if (hasUnderline) textBlockHeight += lineSpacing + underlineHeight + lineSpacing;
+  // Underline gap above is larger to visually center it (accounts for Line 2 ascenders)
+  if (hasUnderline) textBlockHeight += (lineSpacing + fontSize2 * 0.35) + underlineHeight + lineSpacing;
   if (hasLine2) {
     textBlockHeight += fontSize2; // First line
     textBlockHeight += (line2Lines.length - 1) * (fontSize2 + lineSpacing); // Additional wrapped lines
@@ -266,7 +281,15 @@ function buildLogoSVG(scale, showIsolation = false) {
   }
 
   // Get image href (use data URI for CoA so it works in blob-rendered SVG)
-  let imageHref = state.customImage || state.coaDataUri || '';
+  // For SVG export, use PNG version of coat of arms (SVG-in-SVG often doesn't render)
+  let imageHref;
+  if (state.customImage) {
+    imageHref = state.customImage;
+  } else if (forExport && state.coaPngDataUri) {
+    imageHref = state.coaPngDataUri;
+  } else {
+    imageHref = state.coaDataUri || '';
+  }
 
   // Calculate positions
   let imgX, imgY, textX, textY, textAnchor;
@@ -296,7 +319,8 @@ function buildLogoSVG(scale, showIsolation = false) {
     svgContent.push(`<rect x="1" y="1" width="${width - 2}" height="${height - 2}" fill="none" stroke="${colors.fg}" stroke-width="2" stroke-dasharray="5,5"/>`);
   }
 
-  svgContent.push(`<image x="${imgX}" y="${imgY}" width="${imageWidth}" height="${imageHeight}" href="${escapeXml(imageHref)}"/>`);
+  // Use both href and xlink:href for compatibility with different SVG viewers
+  svgContent.push(`<image x="${imgX}" y="${imgY}" width="${imageWidth}" height="${imageHeight}" href="${imageHref}" xlink:href="${imageHref}"/>`);
 
   const fontBold = `font-family="Times New Roman, Times, serif" font-weight="bold" fill="${colors.fg}" text-anchor="${textAnchor}"`;
   const fontNormal = `font-family="Times New Roman, Times, serif" fill="${colors.fg}" text-anchor="${textAnchor}"`;
@@ -304,22 +328,26 @@ function buildLogoSVG(scale, showIsolation = false) {
   // All layouts use stacked text (strip just disables wrapping, handled above)
   let currentY = textY;
 
+  // Render stack: Line1 → gap → underline → gap → Line2 → Line3
+
   if (hasLine1) {
     svgContent.push(`<text x="${textX}" y="${currentY}" font-size="${fontSize1}" ${fontBold}>${escapeXml(state.line1)}</text>`);
   }
 
   if (hasUnderline) {
-    currentY += lineSpacing;
+    // Gap above must be larger to visually center the underline
+    // Line 2's ascenders (~70% of fontSize2) make the visual gap below appear smaller
+    // So we add half the ascender height to the gap above
+    const gapAbove = lineSpacing + fontSize2 * 0.35;
+    currentY += gapAbove;
     let underlineX = textAnchor === 'middle' ? textX - textBlockWidth / 2 : textX;
     svgContent.push(`<rect x="${underlineX}" y="${currentY}" width="${textBlockWidth}" height="${underlineHeight}" fill="${colors.fg}"/>`);
     currentY += underlineHeight + lineSpacing;
   }
 
   if (hasLine2) {
-    // First line of line2
     currentY += fontSize2;
     svgContent.push(`<text x="${textX}" y="${currentY}" font-size="${fontSize2}" ${fontBold}>${escapeXml(line2Lines[0])}</text>`);
-    // Additional wrapped lines
     for (let i = 1; i < line2Lines.length; i++) {
       currentY += lineSpacing + fontSize2;
       svgContent.push(`<text x="${textX}" y="${currentY}" font-size="${fontSize2}" ${fontBold}>${escapeXml(line2Lines[i])}</text>`);
@@ -368,6 +396,8 @@ async function renderSVGToCanvas(svgString, canvas, width, height) {
   });
 }
 
+let previewBlobUrl = null;
+
 async function renderPreview() {
   // 3x for crisp preview
   const scale = state.scale * 3;
@@ -375,22 +405,40 @@ async function renderPreview() {
   const canvas = elements.renderCanvas;
 
   await renderSVGToCanvas(svg, canvas, width, height);
-  elements.previewImage.src = canvas.toDataURL('image/png');
+
+  // Revoke old blob URL to prevent memory leaks
+  if (previewBlobUrl) {
+    URL.revokeObjectURL(previewBlobUrl);
+  }
+
+  // Create blob URL for better browser handling
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+  previewBlobUrl = URL.createObjectURL(blob);
+  elements.previewImage.src = previewBlobUrl;
 }
 
 // ============================================================================
 // Export Functions
 // ============================================================================
 
-function generateTimestamp() {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  const h = String(now.getHours()).padStart(2, '0');
-  const min = String(now.getMinutes()).padStart(2, '0');
-  const s = String(now.getSeconds()).padStart(2, '0');
-  return `${y}${m}${d}-${h}${min}${s}`;
+function generateFilename() {
+  // Skip standard government text, use first custom/meaningful line
+  const standardTexts = ['australian government', 'an australian government initiative'];
+  const line1Lower = state.line1.trim().toLowerCase();
+
+  let name;
+  if (!standardTexts.includes(line1Lower) && state.line1.trim()) {
+    name = state.line1;
+  } else if (state.line2.trim()) {
+    name = state.line2;
+  } else if (state.line3.trim()) {
+    name = state.line3;
+  } else {
+    name = 'logo';
+  }
+
+  // Sanitize: lowercase, replace non-alphanumeric with hyphens, trim hyphens
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'logo';
 }
 
 function downloadBlob(blob, filename) {
@@ -414,15 +462,17 @@ async function exportRaster(format) {
 
   canvas.toBlob((blob) => {
     const ext = format === 'jpeg' ? 'jpg' : 'png';
-    downloadBlob(blob, `logo-${generateTimestamp()}.${ext}`);
+    downloadBlob(blob, `${generateFilename()}.${ext}`);
   }, `image/${format}`, format === 'jpeg' ? 0.95 : undefined);
 }
 
 function exportSVG() {
-  const { svg } = buildLogoSVG(state.scale, false);
+  // Use 8x scale for larger default dimensions (SVG is vector so scales infinitely)
+  const scale = state.scale * 8;
+  const { svg } = buildLogoSVG(scale, false, true); // forExport = true uses PNG for coat of arms
   const fullSvg = `<?xml version="1.0" encoding="UTF-8"?>\n${svg}`;
   const blob = new Blob([fullSvg], { type: 'image/svg+xml' });
-  downloadBlob(blob, `logo-${generateTimestamp()}.svg`);
+  downloadBlob(blob, `${generateFilename()}.svg`);
 }
 
 // ============================================================================
@@ -483,9 +533,26 @@ elements.resetImage.addEventListener('click', () => {
   renderPreview();
 });
 
+function updateSliderTrack() {
+  const slider = elements.scale;
+  const min = parseFloat(slider.min);
+  const max = parseFloat(slider.max);
+  const val = parseFloat(slider.value);
+  const percent = ((val - min) / (max - min)) * 100;
+  slider.style.background = `linear-gradient(to right, #008542 0%, #008542 ${percent}%, #ddd ${percent}%, #ddd 100%)`;
+}
+
+function updatePpiValue() {
+  // Export uses 8x scale multiplier, base 72 PPI
+  const ppi = Math.round(state.scale * 8 * 72);
+  elements.ppiValue.textContent = ppi;
+}
+
 elements.scale.addEventListener('input', (e) => {
   state.scale = parseFloat(e.target.value);
   elements.scaleValue.textContent = state.scale.toFixed(1);
+  updateSliderTrack();
+  updatePpiValue();
   renderPreview();
 });
 
@@ -497,6 +564,9 @@ elements.showIsolation.addEventListener('change', (e) => {
 elements.exportPNG.addEventListener('click', () => exportRaster('png'));
 elements.exportJPEG.addEventListener('click', () => exportRaster('jpeg'));
 elements.exportSVG.addEventListener('click', exportSVG);
+
+// Enable drag-and-drop from preview image (native browser handling)
+elements.previewImage.draggable = true;
 
 // ============================================================================
 // Initialize
@@ -512,6 +582,8 @@ state.logoColor = elements.logoColor.value;
 state.bgColor = elements.bgColor.value;
 state.scale = parseFloat(elements.scale.value);
 elements.scaleValue.textContent = state.scale.toFixed(1);
+updateSliderTrack();
+updatePpiValue();
 state.reverse = elements.reverseMode.checked;
 state.showIsolation = elements.showIsolation.checked;
 
