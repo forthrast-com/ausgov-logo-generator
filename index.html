@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/png" href="assets/favicon.png">
   <title>AusGov Logo Generator</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="src/style.css">
 </head>
 <body>
 
@@ -66,14 +67,13 @@
 
     <div class="control-group">
       <label>Custom Image</label>
-      <div class="file-input-wrapper">
-        <input type="file" id="imageUpload" accept=".png,.jpg,.jpeg,.svg">
-        <div class="file-input-button">Click to upload PNG, SVG, or JPG</div>
+      <div class="btn-group">
+        <div class="file-input-wrapper">
+          <input type="file" id="imageUpload" accept=".png,.jpg,.jpeg,.svg">
+          <button type="button" class="btn btn-primary">Click to upload</button>
+        </div>
+        <button class="btn btn-outline" id="resetImage">Reset</button>
       </div>
-    </div>
-
-    <div class="btn-group" style="margin-bottom: 20px;">
-      <button class="btn btn-outline" id="resetImage">Reset to Default</button>
     </div>
 
     <div class="control-group">
@@ -107,7 +107,7 @@
 
 <canvas id="renderCanvas" style="display:none;"></canvas>
 
-<script src="app.js"></script>
+<script src="src/app.js"></script>
 
 </body>
 </html>

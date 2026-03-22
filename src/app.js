@@ -104,7 +104,7 @@ function updateTextModeUI() {
 
 async function loadDefaultCoA() {
   try {
-    const response = await fetch('coat-of-arms.svg');
+    const response = await fetch('assets/coat-of-arms.svg');
     const svgText = await response.text();
     state.coaDataUri = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgText)));
 
