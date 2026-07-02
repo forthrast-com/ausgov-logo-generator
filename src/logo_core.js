@@ -227,12 +227,20 @@ function contrastRatio(hexA, hexB) {
 }
 
 // Recolour a monochrome SVG (the Conventional 3A Solid arms) so the whole
-// logo stays single-colour per the guidelines. Overrides explicit fills
-// (except fill="none") and sets a root fill for paths that inherit.
-function recolourSvg(svgText, colour) {
+// logo stays single-colour per the guidelines. Dark fills (and inherited
+// defaults, via a root fill) take the logo colour; white fills are knockout
+// detail - crown, stars, shield voids - and map to the knockout colour
+// (normally the background), which is how the official reversed logo works.
+// fill="none" stays untouched.
+function recolourSvg(svgText, colour, knockout = '#ffffff') {
+  const isWhite = (v) => /^(#fff(fff)?|white)$/i.test(v.trim());
+  const isNone = (v) => /^none$/i.test(v.trim());
+
   return svgText
-    .replace(/fill="(?!none")[^"]*"/gi, `fill="${colour}"`)
-    .replace(/fill:(?!\s*none)[^;"'}]*/gi, `fill:${colour}`)
+    .replace(/fill="([^"]*)"/gi, (m, v) =>
+      isNone(v) ? m : `fill="${isWhite(v) ? knockout : colour}"`)
+    .replace(/fill:([^;"'}]*)/gi, (m, v) =>
+      isNone(v) ? m : `fill:${isWhite(v) ? knockout : colour}`)
     .replace(/<svg\b(?![^>]*\bfill=)/i, `<svg fill="${colour}"`);
 }
 

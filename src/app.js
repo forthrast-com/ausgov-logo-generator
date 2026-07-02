@@ -161,7 +161,10 @@ async function recolourDefaultArms(colour, { adopt = false } = {}) {
   if (!defaultArmsSvgText) return;
   const wasCurrent = adopt || !state.image || state.image === state.defaultImage;
 
-  const svgText = recolourSvg(defaultArmsSvgText, colour);
+  // White knockouts track the background so reversed/dark-background logos
+  // read like the official reversed arms; on transparent they stay white
+  const knockout = state.transparentBg ? '#ffffff' : state.bgColor;
+  const svgText = recolourSvg(defaultArmsSvgText, colour, knockout);
   const dataUri = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgText)));
   const { aspect, pngDataUri } = await loadImage(dataUri);
 
@@ -919,12 +922,14 @@ elements.bgColor.addEventListener('input', (e) => {
   state.bgColor = e.target.value;
   updateContrastWarning();
   renderPreview();
+  scheduleArmsRecolour(); // knockout detail tracks the background colour
 });
 
 elements.transparentBg.addEventListener('change', (e) => {
   state.transparentBg = e.target.checked;
   updateContrastWarning();
   renderPreview();
+  scheduleArmsRecolour();
 });
 
 for (const swatch of document.querySelectorAll('.swatch')) {

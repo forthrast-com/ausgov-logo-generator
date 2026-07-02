@@ -195,6 +195,20 @@ test('recolourSvg overrides explicit fills but not fill="none"', () => {
   assert.ok(!out.includes('fill="#000000"'));
 });
 
+test('recolourSvg maps white knockout fills to the knockout colour', () => {
+  const svg = '<svg><path fill="#1a1a1a"/><path fill="#fff"/><path fill="white"/></svg>';
+  const out = recolourSvg(svg, '#182d56', '#deeabb');
+  assert.ok(out.includes('fill="#182d56"'));
+  assert.equal((out.match(/fill="#deeabb"/g) || []).length, 2);
+  assert.ok(!out.includes('#fff"') && !out.includes('white"'));
+});
+
+test('recolourSvg keeps white knockouts white by default', () => {
+  const svg = '<svg><path fill="#000"/><path fill="#ffffff"/></svg>';
+  const out = recolourSvg(svg, '#611c25');
+  assert.ok(out.includes('fill="#ffffff"'));
+});
+
 test('recolourSvg adds a root fill for inherited paths', () => {
   const svg = '<svg xmlns="x"><path d="M0 0"/></svg>';
   const out = recolourSvg(svg, '#611c25');
