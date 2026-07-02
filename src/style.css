@@ -11,36 +11,37 @@ body {
   display: flex;
   flex-direction: row-reverse;
   min-height: 100vh;
-  align-items: center;
+  align-items: flex-start;
 }
 
 /* Controls Panel */
 .controls-panel {
   width: 320px;
-  padding: 24px;
+  padding: 20px;
   background: #EFEFEF;
   border: 2px solid #4A7C2F;
   border-radius: 16px;
   overflow-y: auto;
   flex-shrink: 0;
   margin: 20px;
+  position: sticky;
+  top: 20px;
   height: fit-content;
   max-height: calc(100vh - 40px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .controls-panel h1 {
-  font-size: 24px;
+  font-size: 22px;
   color: #00205B;
-  margin-bottom: 24px;
-  padding-bottom: 12px;
-  border-bottom: 2px solid #4A7C2F;
-  text-align: center;
+  margin-bottom: 18px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #c8c8c8;
 }
 
 /* Form Controls */
 .control-group {
-  margin-bottom: 20px;
+  margin-bottom: 14px;
 }
 
 .control-group label {
@@ -48,8 +49,7 @@ body {
   font-size: 16px;
   font-weight: 600;
   color: #00205B;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.1px;
   margin-bottom: 6px;
 }
 
@@ -58,7 +58,7 @@ body {
 .control-group textarea {
   width: 100%;
   padding: 10px 12px;
-  border: 2px solid #4A7C2F;
+  border: 1px solid #b9b9b9;
   border-radius: 8px;
   font-size: 14px;
   transition: border-color 0.2s;
@@ -91,7 +91,7 @@ body {
 .control-group input[type="color"] {
   width: 100%;
   height: 40px;
-  border: 2px solid #4A7C2F;
+  border: 1px solid #b9b9b9;
   border-radius: 8px;
   cursor: pointer;
   padding: 4px;
@@ -141,16 +141,24 @@ body {
 /* Colour preset swatches (guidelines-approved combos) */
 .swatch-row {
   display: flex;
+  justify-content: space-between;
   gap: 8px;
 }
 
 .swatch {
+  -webkit-appearance: none;
+  appearance: none;
   width: 32px;
   height: 32px;
   border: 2px solid #4A7C2F;
   border-radius: 8px;
   cursor: pointer;
   padding: 0;
+  overflow: hidden;
+  background-clip: border-box;
+  background-repeat: no-repeat !important;
+  background-size: 100% 100% !important;
+  box-shadow: none;
 }
 
 .swatch:hover {
@@ -281,8 +289,8 @@ body {
 
 /* Drawer (Library & Typography) */
 .drawer {
-  margin-bottom: 20px;
-  border: 2px solid #4A7C2F;
+  margin-bottom: 14px;
+  border: 1px solid #c8c8c8;
   border-radius: 8px;
   background: #fff;
 }
@@ -293,8 +301,7 @@ body {
   font-size: 14px;
   font-weight: 600;
   color: #00205B;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.1px;
 }
 
 .drawer-section {
@@ -324,7 +331,39 @@ body {
   font-size: 12px;
   text-transform: none;
   letter-spacing: 0;
+  margin-top: 12px;
 }
+
+.typography-section {
+  padding-top: 14px;
+  border-top: 1px solid #ddd;
+}
+
+.export-block {
+  position: sticky;
+  bottom: -20px;
+  z-index: 2;
+  margin: 0 -20px 14px;
+  padding: 14px 20px;
+  background: #efefef;
+  border-top: 1px solid #c8c8c8;
+  border-bottom: 1px solid #c8c8c8;
+}
+
+.export-primary-actions { flex-wrap: nowrap; }
+
+.export-primary-actions .btn { min-width: 0; }
+
+.export-more { margin-top: 8px; }
+
+.export-more summary {
+  cursor: pointer;
+  color: #53606f;
+  font-size: 12px;
+  text-align: center;
+}
+
+.export-more .btn-group { margin-top: 10px; }
 
 .preset-name {
   flex: 1;
@@ -435,6 +474,10 @@ body {
 }
 
 .footer-note {
+  position: absolute;
+  bottom: 14px;
+  left: 24px;
+  right: 24px;
   font-size: 11px;
   color: #888;
   margin-top: 16px;
@@ -462,6 +505,7 @@ body {
     max-height: none;
     margin: 10px;
     padding: 16px;
+    position: static;
   }
 
   .preview-area {
