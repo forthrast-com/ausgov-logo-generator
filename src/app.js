@@ -40,6 +40,7 @@ const state = {
   imageAspect: 1,       // width/height ratio
   imagePng: null,       // PNG version for export compatibility
   imageBaseline: null,  // Custom baseline alignment (0-1), null = center
+  uploadedSvgText: null, // Raw markup of an uploaded SVG, kept for recolouring
   defaultImage: null,   // Default CoA image
   defaultImageAspect: 1,
   defaultImagePng: null,
@@ -199,18 +200,40 @@ async function setImageFromDataUri(dataUri, baseline = null) {
   state.imageBaseline = baseline;
 }
 
+// Recolour an uploaded SVG the same way as the arms (single-colour rule:
+// dark fills take the logo colour, white fills track the background).
+// Raster uploads are left as-is, per the original spec.
+async function recolourUploadedSvg() {
+  if (!state.uploadedSvgText) return;
+  const knockout = state.transparentBg ? '#ffffff' : state.bgColor;
+  const svgText = recolourSvg(state.uploadedSvgText, state.logoColor, knockout);
+  const dataUri = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgText)));
+  await setImageFromDataUri(dataUri, null);
+}
+
 function handleImageUpload(file) {
+  const isSvg = file.type === 'image/svg+xml' || /\.svg$/i.test(file.name);
   const reader = new FileReader();
   reader.onload = async (e) => {
     try {
-      // Custom images use centered alignment (baseline null)
-      await setImageFromDataUri(e.target.result, null);
+      if (isSvg) {
+        state.uploadedSvgText = e.target.result;
+        await recolourUploadedSvg();
+      } else {
+        // Custom raster images use centered alignment (baseline null)
+        state.uploadedSvgText = null;
+        await setImageFromDataUri(e.target.result, null);
+      }
       renderPreview();
     } catch (err) {
       console.error('Failed to load uploaded image:', err);
     }
   };
-  reader.readAsDataURL(file);
+  if (isSvg) {
+    reader.readAsText(file);
+  } else {
+    reader.readAsDataURL(file);
+  }
 }
 
 // ============================================================================
@@ -704,8 +727,11 @@ function serializeState() {
   for (const key of SERIALISABLE_KEYS) {
     preset[key] = state[key];
   }
-  // Only embed custom images; the default CoA is loaded from the site
-  if (state.image && state.defaultImage && state.image !== state.defaultImage) {
+  // Only embed custom images; the default CoA is loaded from the site.
+  // SVG uploads store raw markup so they stay recolourable on load.
+  if (state.uploadedSvgText) {
+    preset.svgText = state.uploadedSvgText;
+  } else if (state.image && state.defaultImage && state.image !== state.defaultImage) {
     preset.image = state.image;
     preset.imageBaseline = state.imageBaseline;
   }
@@ -727,9 +753,14 @@ async function applyPreset(preset) {
   }
 
   try {
-    if (preset.image) {
+    if (preset.svgText) {
+      state.uploadedSvgText = preset.svgText;
+      await recolourUploadedSvg();
+    } else if (preset.image) {
+      state.uploadedSvgText = null;
       await setImageFromDataUri(preset.image, preset.imageBaseline ?? null);
     } else {
+      state.uploadedSvgText = null;
       await recolourDefaultArms(state.logoColor, { adopt: true });
     }
   } catch (e) {
@@ -907,6 +938,7 @@ function scheduleArmsRecolour() {
   clearTimeout(armsRecolourTimer);
   armsRecolourTimer = setTimeout(async () => {
     await recolourDefaultArms(state.logoColor);
+    await recolourUploadedSvg();
     renderPreview();
   }, 150);
 }
@@ -940,6 +972,7 @@ for (const swatch of document.querySelectorAll('.swatch')) {
     elements.bgColor.value = state.bgColor;
     updateContrastWarning();
     await recolourDefaultArms(state.logoColor);
+    await recolourUploadedSvg();
     renderPreview();
   });
 }
@@ -952,6 +985,7 @@ elements.imageUpload.addEventListener('change', (e) => {
 
 elements.resetImage.addEventListener('click', async () => {
   // Reset to the default arms, recoloured to the current logo colour
+  state.uploadedSvgText = null;
   await recolourDefaultArms(state.logoColor, { adopt: true });
   elements.imageUpload.value = '';
   renderPreview();

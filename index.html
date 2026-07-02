@@ -5,7 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" type="image/png" href="assets/favicon.png">
   <title>AusGov Logo Generator</title>
-  <link rel="stylesheet" href="src/style.css">
+  <!-- Bump ?v= on deploys: GitHub Pages caches assets for 10 minutes and
+       stale JS during that window looks like broken features -->
+  <link rel="stylesheet" href="src/style.css?v=3">
 </head>
 <body>
 
@@ -162,8 +164,8 @@
 
 <canvas id="renderCanvas" style="display:none;"></canvas>
 
-<script src="src/logo_core.js"></script>
-<script src="src/app.js"></script>
+<script src="src/logo_core.js?v=3"></script>
+<script src="src/app.js?v=3"></script>
 
 </body>
 </html>
