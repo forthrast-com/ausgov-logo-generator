@@ -511,5 +511,12 @@ body {
   .preview-area {
     min-height: 250px;
     padding: 10px;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .footer-note {
+    position: static;
+    margin: 0 16px;
   }
 }
