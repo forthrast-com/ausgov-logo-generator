@@ -243,14 +243,166 @@ body {
   min-width: 80px;
 }
 
+/* Drawer (Library & Typography) */
+.drawer {
+  margin-bottom: 20px;
+  border: 2px solid #4A7C2F;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.drawer summary {
+  cursor: pointer;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #00205B;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.drawer-section {
+  padding: 12px;
+  border-top: 1px solid #ddd;
+}
+
+.drawer-section > label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #00205B;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.drawer .control-group {
+  margin-bottom: 12px;
+}
+
+.drawer .control-group:last-child {
+  margin-bottom: 0;
+}
+
+.drawer .sub-label {
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.preset-name {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 2px solid #4A7C2F;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+}
+
+.preset-list {
+  list-style: none;
+  margin: 10px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.preset-list li {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.preset-list .preset-load {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  padding: 6px 10px;
+  border: 2px solid #4A7C2F;
+  border-radius: 8px;
+  background: #fff;
+  color: #00205B;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preset-list .preset-load:hover {
+  background: #4A7C2F;
+  color: #FFB81C;
+}
+
+.preset-list .preset-delete {
+  border: 2px solid #4A7C2F;
+  border-radius: 8px;
+  background: #fff;
+  color: #00205B;
+  font-size: 12px;
+  padding: 0 8px;
+  cursor: pointer;
+}
+
+.preset-list .preset-delete:hover {
+  background: #00205B;
+  color: #fff;
+  border-color: #00205B;
+}
+
+.preset-empty {
+  font-size: 12px;
+  color: #888;
+}
+
+.btn-group-spaced {
+  margin-top: 8px;
+}
+
 /* Preview Area */
 .preview-area {
   flex: 1;
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 40px;
   overflow: auto;
+}
+
+/* Preview backdrop variants (checkerboard is the body default) */
+body.backdrop-white { background: #fff; }
+body.backdrop-dark { background: #1e1e1e; }
+body.backdrop-dark .preview-hint { color: #aaa; }
+
+.backdrop-toggle {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  gap: 4px;
+}
+
+.backdrop-toggle button {
+  width: 32px;
+  height: 32px;
+  border: 2px solid #4A7C2F;
+  border-radius: 8px;
+  background: #fff;
+  color: #00205B;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.backdrop-toggle button.active {
+  background: #4A7C2F;
+  color: #FFB81C;
 }
 
 .preview-wrapper {

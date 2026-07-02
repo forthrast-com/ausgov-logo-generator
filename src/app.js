@@ -1,5 +1,20 @@
-// Application state
-const state = {
+const {
+  AUSTRALIAN_GOV_TEXT,
+  wrapText,
+  getVisibleElements,
+  generateFilename,
+  escapeXml,
+  stateToParams,
+  paramsToState,
+  pngWithPpi
+} = globalThis.logo_core;
+
+// ============================================================================
+// State
+// ============================================================================
+
+// Values that share links and library presets serialise
+const STATE_DEFAULTS = {
   layout: 'inline',
   textMode: 'department',
   line1: 'Australian Government',
@@ -7,13 +22,22 @@ const state = {
   line3: 'Division Name',
   logoColor: '#000000',
   bgColor: '#ffffff',
-  reverse: false,
   scale: 1,
   showIsolation: false,
+  transparentBg: false,
+  fontFamily: '"Times New Roman", Times, serif',
+  fontScale2: 0.8,
+  letterSpacing: 0
+};
+
+const SERIALISABLE_KEYS = Object.keys(STATE_DEFAULTS);
+
+const state = {
+  ...STATE_DEFAULTS,
   // Image state (CoA is just the default image)
   image: null,          // Current image data URI
   imageAspect: 1,       // width/height ratio
-  imagePng: null,       // PNG version for SVG export
+  imagePng: null,       // PNG version for export compatibility
   imageBaseline: null,  // Custom baseline alignment (0-1), null = center
   defaultImage: null,   // Default CoA image
   defaultImageAspect: 1,
@@ -22,36 +46,25 @@ const state = {
 };
 
 // DOM element references
-const elements = {
-  layout: document.getElementById('layout'),
-  textMode: document.getElementById('textMode'),
-  line1: document.getElementById('line1'),
-  line2: document.getElementById('line2'),
-  line3: document.getElementById('line3'),
-  line1Group: document.getElementById('line1Group'),
-  line2Group: document.getElementById('line2Group'),
-  line3Group: document.getElementById('line3Group'),
-  logoColor: document.getElementById('logoColor'),
-  bgColor: document.getElementById('bgColor'),
-  reverseMode: document.getElementById('reverseMode'),
-  imageUpload: document.getElementById('imageUpload'),
-  resetImage: document.getElementById('resetImage'),
-  scale: document.getElementById('scale'),
-  scaleValue: document.getElementById('scaleValue'),
-  ppiValue: document.getElementById('ppiValue'),
-  showIsolation: document.getElementById('showIsolation'),
-  exportPNG: document.getElementById('exportPNG'),
-  exportJPEG: document.getElementById('exportJPEG'),
-  exportSVG: document.getElementById('exportSVG'),
-  previewImage: document.getElementById('previewImage'),
-  renderCanvas: document.getElementById('renderCanvas')
-};
+const elements = {};
+for (const id of [
+  'layout', 'textMode', 'line1', 'line2', 'line3',
+  'line1Group', 'line2Group', 'line3Group',
+  'logoColor', 'bgColor', 'transparentBg',
+  'imageUpload', 'resetImage',
+  'scale', 'scaleValue', 'ppiValue', 'showIsolation',
+  'exportPNG', 'exportJPEG', 'exportSVG', 'copyPNG', 'copyLink',
+  'presetName', 'savePreset', 'presetList', 'exportLibrary', 'importLibrary',
+  'fontFamily', 'fontScale2', 'fontScale2Value', 'letterSpacing', 'letterSpacingValue',
+  'previewImage', 'previewArea', 'renderCanvas'
+]) {
+  elements[id] = document.getElementById(id);
+}
 
 // Base dimensions (before scaling)
 const BASE = {
   imageHeight: 80,
   fontSize1: 20,
-  fontSize2: 16,    // Lines 2 and 3 (same as Line 1)
   padding: 20,
   gap: 12,
   underlineHeight: 1,
@@ -69,17 +82,10 @@ function updateTextModeUI() {
 
   switch (mode) {
     case 'department':
-      line1Input.value = 'Australian Government';
+      line1Input.value = AUSTRALIAN_GOV_TEXT;
       line1Input.disabled = true;
-      state.line1 = 'Australian Government';
+      state.line1 = AUSTRALIAN_GOV_TEXT;
       elements.line2Group.classList.remove('hidden');
-      elements.line3Group.classList.add('hidden');
-      break;
-    case 'government':
-      line1Input.value = 'Australian Government';
-      line1Input.disabled = true;
-      state.line1 = 'Australian Government';
-      elements.line2Group.classList.add('hidden');
       elements.line3Group.classList.add('hidden');
       break;
     case 'initiative':
@@ -90,9 +96,9 @@ function updateTextModeUI() {
       elements.line3Group.classList.add('hidden');
       break;
     case 'hierarchy':
-      line1Input.value = 'Australian Government';
+      line1Input.value = AUSTRALIAN_GOV_TEXT;
       line1Input.disabled = true;
-      state.line1 = 'Australian Government';
+      state.line1 = AUSTRALIAN_GOV_TEXT;
       elements.line2Group.classList.remove('hidden');
       elements.line3Group.classList.remove('hidden');
       break;
@@ -102,6 +108,17 @@ function updateTextModeUI() {
       elements.line3Group.classList.remove('hidden');
       break;
   }
+}
+
+// Briefly confirm a button action without a toast framework
+function flashButton(button, text) {
+  const original = button.textContent;
+  button.textContent = text;
+  button.disabled = true;
+  setTimeout(() => {
+    button.textContent = original;
+    button.disabled = false;
+  }, 1200);
 }
 
 // ============================================================================
@@ -144,11 +161,13 @@ async function loadDefaultImage() {
     state.defaultImageAspect = aspect;
     state.defaultImagePng = pngDataUri;
 
-    // Set as current image
-    state.image = dataUri;
-    state.imageAspect = aspect;
-    state.imagePng = pngDataUri;
-    state.imageBaseline = state.defaultImageBaseline;
+    // Set as current image unless a preset already provided one
+    if (!state.image) {
+      state.image = dataUri;
+      state.imageAspect = aspect;
+      state.imagePng = pngDataUri;
+      state.imageBaseline = state.defaultImageBaseline;
+    }
 
     renderPreview();
   } catch (e) {
@@ -156,15 +175,20 @@ async function loadDefaultImage() {
   }
 }
 
+async function setImageFromDataUri(dataUri, baseline = null) {
+  const { aspect, pngDataUri } = await loadImage(dataUri);
+  state.image = dataUri;
+  state.imageAspect = aspect;
+  state.imagePng = pngDataUri;
+  state.imageBaseline = baseline;
+}
+
 function handleImageUpload(file) {
   const reader = new FileReader();
   reader.onload = async (e) => {
     try {
-      const { dataUri, aspect, pngDataUri } = await loadImage(e.target.result);
-      state.image = dataUri;
-      state.imageAspect = aspect;
-      state.imagePng = pngDataUri;
-      state.imageBaseline = null;  // Custom images use centered alignment
+      // Custom images use centered alignment (baseline null)
+      await setImageFromDataUri(e.target.result, null);
       renderPreview();
     } catch (err) {
       console.error('Failed to load uploaded image:', err);
@@ -174,162 +198,47 @@ function handleImageUpload(file) {
 }
 
 // ============================================================================
-// Text Wrapping
+// Text Measurement
 // ============================================================================
 
-// Greedy first-fit wrap of one paragraph. Assumes ctx.font is already set.
-function greedyWrap(ctx, words, maxWidth) {
-  const lines = [];
-  let currentLine = '';
-
-  for (const word of words) {
-    const testLine = currentLine ? `${currentLine} ${word}` : word;
-    const metrics = ctx.measureText(testLine);
-
-    if (metrics.width > maxWidth && currentLine) {
-      lines.push(currentLine);
-      currentLine = word;
-    } else {
-      currentLine = testLine;
-    }
-  }
-
-  if (currentLine) {
-    lines.push(currentLine);
-  }
-
-  return lines;
-}
-
-function wrapText(ctx, text, maxWidth, fontSize, bold = true) {
-  ctx.font = `${bold ? 'bold ' : ''}${fontSize}px "Times New Roman", Times, serif`;
-
-  // First split on explicit line breaks, then wrap each paragraph
-  const paragraphs = text.split('\n');
-  const lines = [];
-
-  for (const paragraph of paragraphs) {
-    if (!paragraph.trim()) {
-      // Empty line - preserve it
-      lines.push('');
-      continue;
-    }
-
-    const words = paragraph.split(' ');
-    let wrapped = greedyWrap(ctx, words, maxWidth);
-
-    // Balance multi-line wraps: binary-search the narrowest width that still
-    // fits in the same number of lines, so "...Regional Development and /
-    // Local Government" becomes two lines of similar length instead of one
-    // long and one short
-    if (wrapped.length > 1 && isFinite(maxWidth)) {
-      const lineCount = wrapped.length;
-      let lo = Math.max(...words.map(w => ctx.measureText(w).width));
-      let hi = maxWidth;
-      for (let i = 0; i < 12; i++) {
-        const mid = (lo + hi) / 2;
-        if (greedyWrap(ctx, words, mid).length > lineCount) {
-          lo = mid;
-        } else {
-          hi = mid;
-        }
-      }
-      wrapped = greedyWrap(ctx, words, hi);
-    }
-
-    lines.push(...wrapped);
-  }
-
-  return lines;
-}
-
-// ============================================================================
-// Rendering - SVG Generation (Single Source of Truth)
-// ============================================================================
-
-function getEffectiveColors() {
-  return {
-    fg: state.reverse ? state.bgColor : state.logoColor,
-    bg: state.reverse ? state.logoColor : state.bgColor
+// Bind a canvas context to a font so wrapping code only sees measure(text).
+// Canvas letterSpacing is Chrome/Safari; elsewhere approximate it per glyph
+// so measured widths still match the letter-spacing the SVG will render.
+function makeMeasurer(ctx, fontSize, bold, letterSpacingPx) {
+  const font = `${bold ? 'bold ' : ''}${fontSize}px ${state.fontFamily}`;
+  const supportsLetterSpacing = 'letterSpacing' in ctx;
+  return (text) => {
+    ctx.font = font;
+    if (supportsLetterSpacing) ctx.letterSpacing = `${letterSpacingPx}px`;
+    const width = ctx.measureText(text).width;
+    return supportsLetterSpacing ? width : width + Math.max(0, text.length - 1) * letterSpacingPx;
   };
 }
 
-function measureText(ctx, text, fontSize, bold = true) {
-  ctx.font = `${bold ? 'bold ' : ''}${fontSize}px "Times New Roman", Times, serif`;
-  return ctx.measureText(text);
-}
+// ============================================================================
+// Rendering - Layout (pure geometry, no SVG)
+// ============================================================================
 
-function escapeXml(str) {
-  return str.replace(/[<>&'"]/g, c => ({
-    '<': '&lt;',
-    '>': '&gt;',
-    '&': '&amp;',
-    "'": '&apos;',
-    '"': '&quot;'
-  }[c]));
-}
-
-// Unified function to determine which elements to show
-// Applies empty-check logic consistently across all text modes
-function getVisibleElements() {
-  const line1Empty = !state.line1.trim();
-  const line2Empty = !state.line2.trim();
-  const line3Empty = !state.line3.trim();
-
-  // Determine if lines should be shown based on mode AND content
-  let hasLine1, hasLine2, hasLine3;
-
-  switch (state.textMode) {
-    case 'government':
-      hasLine1 = !line1Empty;
-      hasLine2 = false;
-      hasLine3 = false;
-      break;
-    case 'initiative':
-      hasLine1 = !line1Empty;
-      hasLine2 = false;
-      hasLine3 = false;
-      break;
-    case 'department':
-      hasLine1 = !line1Empty;
-      hasLine2 = !line2Empty;
-      hasLine3 = false;
-      break;
-    case 'hierarchy':
-      hasLine1 = !line1Empty;
-      hasLine2 = !line2Empty;
-      hasLine3 = !line3Empty;
-      break;
-    case 'free':
-    default:
-      hasLine1 = !line1Empty;
-      hasLine2 = !line2Empty;
-      hasLine3 = !line3Empty;
-      break;
-  }
-
-  // Underline shows when Line 1 exists AND there's content below it
-  const hasUnderline = hasLine1 && (hasLine2 || hasLine3);
-
-  return { hasLine1, hasLine2, hasLine3, hasUnderline };
-}
-
-function buildLogoSVG(scale, showIsolation = false, forExport = false) {
-  const colors = getEffectiveColors();
-  const tempCanvas = document.createElement('canvas');
-  const ctx = tempCanvas.getContext('2d');
+function layoutLogo(scale) {
+  const ctx = document.createElement('canvas').getContext('2d');
 
   const s = scale;
   const padding = BASE.padding * s;
   const imageHeight = BASE.imageHeight * s;
   const fontSize1 = BASE.fontSize1 * s;
-  const fontSize2 = BASE.fontSize2 * s;
+  const fontSize2 = BASE.fontSize1 * state.fontScale2 * s;
   const gap = BASE.gap * s;
   const lineSpacing = BASE.lineSpacing * s;
   const underlineHeight = BASE.underlineHeight * s;
+  const letterSpacing = state.letterSpacing * s;
+
+  const measure1 = makeMeasurer(ctx, fontSize1, true, letterSpacing);
+  const measure2 = makeMeasurer(ctx, fontSize2, true, letterSpacing);
+  const measure3 = makeMeasurer(ctx, fontSize2, false, letterSpacing);
 
   // Determine which lines to show (unified logic for all modes)
-  const { hasLine1, hasLine2, hasLine3, hasUnderline } = getVisibleElements();
+  const visible = getVisibleElements(state.textMode, state.line1, state.line2, state.line3);
+  const { hasLine1, hasLine2, hasLine3, hasUnderline } = visible;
 
   // Layout flags
   const isStrip = state.layout === 'inline-strip' || state.layout === 'stacked-strip';
@@ -344,9 +253,7 @@ function buildLogoSVG(scale, showIsolation = false, forExport = false) {
   const minWideImageWidth = isWide && isImageOnTop ? minImageHeight * imageAspect : 0;
 
   // Default text width and max wrap width
-  const australianGovText = 'Australian Government';
-  const australianGovWidth = measureText(ctx, australianGovText, fontSize1).width;
-  const defaultMaxWidth = australianGovWidth;
+  const defaultMaxWidth = measure1(AUSTRALIAN_GOV_TEXT);
 
   // For stacked wide images, use the wider of default or image width for wrapping
   const effectiveMaxWidth = isImageOnTop && isWide ? Math.max(defaultMaxWidth, minWideImageWidth) : defaultMaxWidth;
@@ -359,12 +266,12 @@ function buildLogoSVG(scale, showIsolation = false, forExport = false) {
     // else goes through wrapText so explicit newlines survive (SVG collapses
     // a raw \n inside <text> to a space). Strip layouts only disable
     // width-based wrapping, not manual line breaks.
-    if (state.line1 === australianGovText) {
+    if (state.line1 === AUSTRALIAN_GOV_TEXT) {
       line1Lines = [state.line1];
     } else {
-      line1Lines = wrapText(ctx, state.line1, isStrip ? Infinity : effectiveMaxWidth, fontSize1);
+      line1Lines = wrapText(measure1, state.line1, isStrip ? Infinity : effectiveMaxWidth);
     }
-    line1Width = Math.max(...line1Lines.map(l => measureText(ctx, l, fontSize1).width));
+    line1Width = Math.max(...line1Lines.map(measure1));
   }
 
   // Image dimensions
@@ -401,31 +308,28 @@ function buildLogoSVG(scale, showIsolation = false, forExport = false) {
     // No Line 1, wide stacked image - wrap to image width
     wrapWidth = imageWidth;
   } else {
-    // Use effective max or let content determine width
     wrapWidth = effectiveMaxWidth;
   }
 
-  // For non-strip: wrap Line 2 and Line 3
-  // For strip: no wrapping, all on one line
   let line2Lines = [];
   let line3Lines = [];
   let line2Width = 0;
   let line3Width = 0;
 
   if (hasLine2) {
-    line2Lines = wrapText(ctx, state.line2, isStrip ? Infinity : wrapWidth, fontSize2);
-    line2Width = Math.max(...line2Lines.map(l => measureText(ctx, l, fontSize2).width));
+    line2Lines = wrapText(measure2, state.line2, isStrip ? Infinity : wrapWidth);
+    line2Width = Math.max(...line2Lines.map(measure2));
   }
 
   if (hasLine3) {
     // Line 3 renders normal-weight, so measure/wrap it normal-weight too
-    line3Lines = wrapText(ctx, state.line3, isStrip ? Infinity : wrapWidth, fontSize2, false);
-    line3Width = Math.max(...line3Lines.map(l => measureText(ctx, l, fontSize2, false).width));
+    line3Lines = wrapText(measure3, state.line3, isStrip ? Infinity : wrapWidth);
+    line3Width = Math.max(...line3Lines.map(measure3));
   }
 
   // Calculate text block dimensions (always stacked, strip just disables wrapping)
   // Width is determined by the widest text line present
-  let textBlockWidth = Math.max(line1Width || 0, line2Width, line3Width);
+  const textBlockWidth = Math.max(line1Width || 0, line2Width, line3Width);
   let textBlockHeight = 0;
   if (hasLine1) {
     textBlockHeight = fontSize1; // First line
@@ -438,9 +342,6 @@ function buildLogoSVG(scale, showIsolation = false, forExport = false) {
     textBlockHeight += (line2Lines.length - 1) * (fontSize2 + lineSpacing); // Additional wrapped lines
   }
   if (hasLine3) textBlockHeight += line3Lines.length * (fontSize2 + lineSpacing);
-
-  // Get image href (use PNG version for SVG export as SVG-in-SVG often doesn't render)
-  const imageHref = forExport ? (state.imagePng || state.image || '') : (state.image || '');
 
   // Calculate positions and dimensions
   let width, height, imgX, imgY, textX, textY, textAnchor;
@@ -497,25 +398,57 @@ function buildLogoSVG(scale, showIsolation = false, forExport = false) {
     height = contentBottom + topAdjust + padding;
   }
 
-  // Build SVG elements
-  let svgContent = [];
+  return {
+    s, fontSize1, fontSize2, lineSpacing, underlineHeight, letterSpacing,
+    width, height, imgX, imgY, imageWidth, actualImageHeight,
+    textX, textY, textAnchor, textBlockWidth,
+    line1Lines, line2Lines, line3Lines, visible
+  };
+}
 
-  svgContent.push(`<rect width="100%" height="100%" fill="${colors.bg}"/>`);
+// ============================================================================
+// Rendering - SVG Emission
+// ============================================================================
 
-  if (showIsolation) {
-    svgContent.push(`<rect x="1" y="1" width="${width - 2}" height="${height - 2}" fill="none" stroke="${colors.fg}" stroke-width="2" stroke-dasharray="5,5"/>`);
+function emitLogoSVG(geom, { showIsolation = false, forExport = false, transparent = false } = {}) {
+  const {
+    s, fontSize1, fontSize2, lineSpacing, underlineHeight, letterSpacing,
+    imgX, imgY, imageWidth, actualImageHeight,
+    textX, textY, textAnchor, textBlockWidth,
+    line1Lines, line2Lines, line3Lines,
+    visible: { hasLine1, hasLine2, hasLine3, hasUnderline }
+  } = geom;
+
+  // Isolation zone: clear space of half the arms/image height on every side,
+  // drawn outside the logo bounds (per the AG brand clear-space rule)
+  const iso = showIsolation ? actualImageHeight / 2 : 0;
+  const width = geom.width + iso * 2;
+  const height = geom.height + iso * 2;
+
+  // Use PNG version for exports as SVG-in-SVG often doesn't render
+  const imageHref = forExport ? (state.imagePng || state.image || '') : (state.image || '');
+
+  const fontFamilyAttr = escapeXml(state.fontFamily);
+  const lsAttr = letterSpacing ? ` letter-spacing="${letterSpacing}"` : '';
+  const fontBold = `font-family="${fontFamilyAttr}" font-weight="bold" fill="${state.logoColor}" text-anchor="${textAnchor}"${lsAttr}`;
+  const fontNormal = `font-family="${fontFamilyAttr}" fill="${state.logoColor}" text-anchor="${textAnchor}"${lsAttr}`;
+
+  const svgContent = [];
+
+  if (!transparent) {
+    svgContent.push(`<rect width="100%" height="100%" fill="${state.bgColor}"/>`);
+  }
+
+  if (iso) {
+    svgContent.push(`<g transform="translate(${iso} ${iso})">`);
+    svgContent.push(`<rect x="0" y="0" width="${geom.width}" height="${geom.height}" fill="none" stroke="${state.logoColor}" stroke-width="${s}" stroke-dasharray="${5 * s},${5 * s}"/>`);
   }
 
   // Use both href and xlink:href for compatibility with different SVG viewers
   svgContent.push(`<image x="${imgX}" y="${imgY}" width="${imageWidth}" height="${actualImageHeight}" href="${imageHref}" xlink:href="${imageHref}"/>`);
 
-  const fontBold = `font-family="Times New Roman, Times, serif" font-weight="bold" fill="${colors.fg}" text-anchor="${textAnchor}"`;
-  const fontNormal = `font-family="Times New Roman, Times, serif" fill="${colors.fg}" text-anchor="${textAnchor}"`;
-
-  // All layouts use stacked text (strip just disables wrapping, handled above)
-  let currentY = textY;
-
   // Render stack: Line1 → gap → underline → gap → Line2 → Line3
+  let currentY = textY;
 
   if (hasLine1) {
     svgContent.push(`<text x="${textX}" y="${currentY}" font-size="${fontSize1}" ${fontBold}>${escapeXml(line1Lines[0])}</text>`);
@@ -531,8 +464,8 @@ function buildLogoSVG(scale, showIsolation = false, forExport = false) {
     // So we add half the ascender height to the gap above
     const gapAbove = lineSpacing + fontSize2 * 0.35;
     currentY += gapAbove;
-    let underlineX = textAnchor === 'middle' ? textX - textBlockWidth / 2 : textX;
-    svgContent.push(`<rect x="${underlineX}" y="${currentY}" width="${textBlockWidth}" height="${underlineHeight}" fill="${colors.fg}"/>`);
+    const underlineX = textAnchor === 'middle' ? textX - textBlockWidth / 2 : textX;
+    svgContent.push(`<rect x="${underlineX}" y="${currentY}" width="${textBlockWidth}" height="${underlineHeight}" fill="${state.logoColor}"/>`);
     currentY += underlineHeight + lineSpacing;
   }
 
@@ -552,11 +485,19 @@ function buildLogoSVG(scale, showIsolation = false, forExport = false) {
     }
   }
 
+  if (iso) {
+    svgContent.push('</g>');
+  }
+
   return {
     svg: `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${svgContent.join('')}</svg>`,
     width,
     height
   };
+}
+
+function buildLogoSVG(scale, opts = {}) {
+  return emitLogoSVG(layoutLogo(scale), opts);
 }
 
 // ============================================================================
@@ -595,9 +536,14 @@ async function renderPreview() {
   // sure only the latest render gets to set the preview image
   const token = ++previewRenderToken;
 
+  syncUrl();
+
   // 3x for crisp preview
   const scale = state.scale * 3;
-  const { svg, width, height } = buildLogoSVG(scale, state.showIsolation);
+  const { svg, width, height } = buildLogoSVG(scale, {
+    showIsolation: state.showIsolation,
+    transparent: state.transparentBg
+  });
   const canvas = elements.renderCanvas;
 
   await renderSVGToCanvas(svg, canvas, width, height);
@@ -616,28 +562,26 @@ async function renderPreview() {
 }
 
 // ============================================================================
-// Export Functions
+// Shareable URLs
 // ============================================================================
 
-function generateFilename() {
-  // Skip standard government text, use first custom/meaningful line
-  const standardTexts = ['australian government', 'an australian government initiative'];
-  const line1Lower = state.line1.trim().toLowerCase();
+let syncUrlTimer = null;
 
-  let name;
-  if (!standardTexts.includes(line1Lower) && state.line1.trim()) {
-    name = state.line1;
-  } else if (state.line2.trim()) {
-    name = state.line2;
-  } else if (state.line3.trim()) {
-    name = state.line3;
-  } else {
-    name = 'logo';
-  }
-
-  // Sanitize: lowercase, replace non-alphanumeric with hyphens, trim hyphens
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'logo';
+function syncUrl() {
+  clearTimeout(syncUrlTimer);
+  syncUrlTimer = setTimeout(() => {
+    const qs = stateToParams(state, STATE_DEFAULTS).toString();
+    history.replaceState(null, '', qs ? `#${qs}` : location.pathname + location.search);
+  }, 150);
 }
+
+function readStateFromUrl() {
+  return paramsToState(new URLSearchParams(location.hash.slice(1)), STATE_DEFAULTS);
+}
+
+// ============================================================================
+// Export Functions
+// ============================================================================
 
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -653,38 +597,284 @@ function downloadBlob(blob, filename) {
 // Browsers silently fail (null blob / blank canvas) past ~16M pixels
 const MAX_EXPORT_PIXELS = 16000000;
 
-async function exportRaster(format) {
-  // 8x for high-res export; forExport = true swaps the coat of arms to its
-  // PNG version, which Safari needs to draw the SVG onto a canvas at all
+// Shared render path for downloads and clipboard. forExport swaps the coat
+// of arms to its PNG version, which Safari needs to canvas-draw at all.
+async function renderExportBlob(format) {
+  const transparent = state.transparentBg && format !== 'jpeg';
+
+  // 8x for high-res export
   let scale = state.scale * 8;
-  let { svg, width, height } = buildLogoSVG(scale, false, true);
+  let { svg, width, height } = buildLogoSVG(scale, { forExport: true, transparent });
 
   // Clamp to the canvas pixel budget rather than exporting a blank image
   if (width * height > MAX_EXPORT_PIXELS) {
     scale *= Math.sqrt(MAX_EXPORT_PIXELS / (width * height));
-    ({ svg, width, height } = buildLogoSVG(scale, false, true));
+    ({ svg, width, height } = buildLogoSVG(scale, { forExport: true, transparent }));
   }
 
   const canvas = document.createElement('canvas');
   await renderSVGToCanvas(svg, canvas, width, height);
 
-  canvas.toBlob((blob) => {
-    if (!blob) {
-      alert('Export failed - try a smaller scale.');
-      return;
-    }
+  let blob = await new Promise(resolve =>
+    canvas.toBlob(resolve, `image/${format}`, format === 'jpeg' ? 0.95 : undefined));
+  if (!blob) {
+    throw new Error('canvas export failed - try a smaller scale');
+  }
+
+  if (format === 'png') {
+    // Stamp the pixel density the UI advertises (base design is 72 PPI at 1x)
+    const ppi = Math.round(scale * 72);
+    const bytes = pngWithPpi(new Uint8Array(await blob.arrayBuffer()), ppi);
+    blob = new Blob([bytes], { type: 'image/png' });
+  }
+
+  return blob;
+}
+
+async function exportRaster(format) {
+  try {
+    const blob = await renderExportBlob(format);
     const ext = format === 'jpeg' ? 'jpg' : 'png';
-    downloadBlob(blob, `${generateFilename()}.${ext}`);
-  }, `image/${format}`, format === 'jpeg' ? 0.95 : undefined);
+    downloadBlob(blob, `${currentFilename()}.${ext}`);
+  } catch (e) {
+    alert(`Export failed: ${e.message}`);
+  }
 }
 
 function exportSVG() {
   // Use 8x scale for larger default dimensions (SVG is vector so scales infinitely)
   const scale = state.scale * 8;
-  const { svg } = buildLogoSVG(scale, false, true); // forExport = true uses PNG for coat of arms
+  const { svg } = buildLogoSVG(scale, { forExport: true, transparent: state.transparentBg });
   const fullSvg = `<?xml version="1.0" encoding="UTF-8"?>\n${svg}`;
   const blob = new Blob([fullSvg], { type: 'image/svg+xml' });
-  downloadBlob(blob, `${generateFilename()}.svg`);
+  downloadBlob(blob, `${currentFilename()}.svg`);
+}
+
+function currentFilename() {
+  return generateFilename(state.line1, state.line2, state.line3);
+}
+
+function copyPNG() {
+  if (!navigator.clipboard || !window.ClipboardItem) {
+    alert('Clipboard images are not supported in this browser.');
+    return;
+  }
+  // ClipboardItem must be created synchronously within the user gesture
+  // (Safari), so it wraps the render promise rather than awaiting it first
+  const item = new ClipboardItem({ 'image/png': renderExportBlob('png') });
+  navigator.clipboard.write([item])
+    .then(() => flashButton(elements.copyPNG, 'Copied ✓'))
+    .catch(e => alert(`Copy failed: ${e.message}`));
+}
+
+function copyLink() {
+  navigator.clipboard.writeText(location.href)
+    .then(() => flashButton(elements.copyLink, 'Copied ✓'))
+    .catch(e => alert(`Copy failed: ${e.message}`));
+}
+
+// ============================================================================
+// Logo Library (localStorage presets)
+// ============================================================================
+
+const LIBRARY_KEY = 'agl.library.v1';
+
+function loadLibrary() {
+  try {
+    return JSON.parse(localStorage.getItem(LIBRARY_KEY)) || {};
+  } catch {
+    return {};
+  }
+}
+
+function saveLibrary(library) {
+  try {
+    localStorage.setItem(LIBRARY_KEY, JSON.stringify(library));
+    return true;
+  } catch (e) {
+    // Quota is the realistic failure here, usually from large embedded images
+    alert(`Could not save preset (storage full?): ${e.message}`);
+    return false;
+  }
+}
+
+function serializeState() {
+  const preset = {};
+  for (const key of SERIALISABLE_KEYS) {
+    preset[key] = state[key];
+  }
+  // Only embed custom images; the default CoA is loaded from the site
+  if (state.image && state.defaultImage && state.image !== state.defaultImage) {
+    preset.image = state.image;
+    preset.imageBaseline = state.imageBaseline;
+  }
+  return preset;
+}
+
+async function applyPreset(preset) {
+  for (const key of SERIALISABLE_KEYS) {
+    if (preset[key] !== undefined) state[key] = preset[key];
+  }
+  reflectStateToControls();
+  updateTextModeUI();
+  // updateTextModeUI forces mode-default Line 1 text; restore the preset's
+  for (const key of ['line1', 'line2', 'line3']) {
+    if (preset[key] !== undefined) {
+      state[key] = preset[key];
+      elements[key].value = preset[key];
+    }
+  }
+
+  try {
+    if (preset.image) {
+      await setImageFromDataUri(preset.image, preset.imageBaseline ?? null);
+    } else if (state.defaultImage) {
+      state.image = state.defaultImage;
+      state.imageAspect = state.defaultImageAspect;
+      state.imagePng = state.defaultImagePng;
+      state.imageBaseline = state.defaultImageBaseline;
+    }
+  } catch (e) {
+    console.error('Failed to load preset image:', e);
+  }
+
+  renderPreview();
+}
+
+function renderPresetList() {
+  const library = loadLibrary();
+  const names = Object.keys(library).sort();
+  elements.presetList.innerHTML = '';
+
+  if (names.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'preset-empty';
+    li.textContent = 'No saved logos yet';
+    elements.presetList.appendChild(li);
+    return;
+  }
+
+  for (const name of names) {
+    const li = document.createElement('li');
+
+    const load = document.createElement('button');
+    load.className = 'preset-load';
+    load.textContent = name;
+    load.title = `Load "${name}"`;
+    load.addEventListener('click', () => applyPreset(library[name]));
+
+    const del = document.createElement('button');
+    del.className = 'preset-delete';
+    del.textContent = '✕';
+    del.title = `Delete "${name}"`;
+    del.addEventListener('click', () => {
+      const current = loadLibrary();
+      delete current[name];
+      if (saveLibrary(current)) renderPresetList();
+    });
+
+    li.appendChild(load);
+    li.appendChild(del);
+    elements.presetList.appendChild(li);
+  }
+}
+
+function savePreset() {
+  const name = elements.presetName.value.trim() || currentFilename();
+  const library = loadLibrary();
+  library[name] = serializeState();
+  if (saveLibrary(library)) {
+    elements.presetName.value = '';
+    renderPresetList();
+    flashButton(elements.savePreset, 'Saved ✓');
+  }
+}
+
+function exportLibrary() {
+  const blob = new Blob([JSON.stringify(loadLibrary(), null, 2)], { type: 'application/json' });
+  downloadBlob(blob, 'ausgov-logo-library.json');
+}
+
+function importLibrary(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const imported = JSON.parse(e.target.result);
+      if (typeof imported !== 'object' || imported === null || Array.isArray(imported)) {
+        throw new Error('expected an object of named presets');
+      }
+      const merged = { ...loadLibrary(), ...imported };
+      if (saveLibrary(merged)) renderPresetList();
+    } catch (err) {
+      alert(`Import failed: ${err.message}`);
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ============================================================================
+// Preview Backdrop
+// ============================================================================
+
+const BACKDROP_KEY = 'agl.backdrop';
+
+function setBackdrop(mode) {
+  document.body.classList.remove('backdrop-white', 'backdrop-dark');
+  if (mode === 'white' || mode === 'dark') {
+    document.body.classList.add(`backdrop-${mode}`);
+  }
+  for (const btn of document.querySelectorAll('.backdrop-toggle button')) {
+    btn.classList.toggle('active', btn.dataset.backdrop === mode);
+  }
+  try {
+    localStorage.setItem(BACKDROP_KEY, mode);
+  } catch {
+    // Preview preference only; losing it is fine
+  }
+}
+
+// ============================================================================
+// Control Sync
+// ============================================================================
+
+function reflectStateToControls() {
+  elements.layout.value = state.layout;
+  elements.textMode.value = state.textMode;
+  elements.line1.value = state.line1;
+  elements.line2.value = state.line2;
+  elements.line3.value = state.line3;
+  elements.logoColor.value = state.logoColor;
+  elements.bgColor.value = state.bgColor;
+  elements.transparentBg.checked = state.transparentBg;
+  elements.showIsolation.checked = state.showIsolation;
+  elements.scale.value = state.scale;
+  elements.fontFamily.value = state.fontFamily;
+  elements.fontScale2.value = state.fontScale2;
+  elements.letterSpacing.value = state.letterSpacing;
+  updateControlReadouts();
+}
+
+function updateControlReadouts() {
+  elements.scaleValue.textContent = state.scale.toFixed(1);
+  elements.fontScale2Value.textContent = state.fontScale2.toFixed(2);
+  elements.letterSpacingValue.textContent = state.letterSpacing.toFixed(1);
+  updateSliderTrack();
+  updatePpiValue();
+}
+
+function updateSliderTrack() {
+  const slider = elements.scale;
+  const min = parseFloat(slider.min);
+  const max = parseFloat(slider.max);
+  const val = parseFloat(slider.value);
+  const percent = ((val - min) / (max - min)) * 100;
+  slider.style.background = `linear-gradient(to right, #008542 0%, #008542 ${percent}%, #ddd ${percent}%, #ddd 100%)`;
+}
+
+function updatePpiValue() {
+  // Export uses 8x scale multiplier, base 72 PPI
+  const ppi = Math.round(state.scale * 8 * 72);
+  elements.ppiValue.textContent = ppi;
 }
 
 // ============================================================================
@@ -702,20 +892,12 @@ elements.textMode.addEventListener('change', (e) => {
   renderPreview();
 });
 
-elements.line1.addEventListener('input', (e) => {
-  state.line1 = e.target.value;
-  renderPreview();
-});
-
-elements.line2.addEventListener('input', (e) => {
-  state.line2 = e.target.value;
-  renderPreview();
-});
-
-elements.line3.addEventListener('input', (e) => {
-  state.line3 = e.target.value;
-  renderPreview();
-});
+for (const key of ['line1', 'line2', 'line3']) {
+  elements[key].addEventListener('input', (e) => {
+    state[key] = e.target.value;
+    renderPreview();
+  });
+}
 
 elements.logoColor.addEventListener('input', (e) => {
   state.logoColor = e.target.value;
@@ -727,8 +909,8 @@ elements.bgColor.addEventListener('input', (e) => {
   renderPreview();
 });
 
-elements.reverseMode.addEventListener('change', (e) => {
-  state.reverse = e.target.checked;
+elements.transparentBg.addEventListener('change', (e) => {
+  state.transparentBg = e.target.checked;
   renderPreview();
 });
 
@@ -748,26 +930,9 @@ elements.resetImage.addEventListener('click', () => {
   renderPreview();
 });
 
-function updateSliderTrack() {
-  const slider = elements.scale;
-  const min = parseFloat(slider.min);
-  const max = parseFloat(slider.max);
-  const val = parseFloat(slider.value);
-  const percent = ((val - min) / (max - min)) * 100;
-  slider.style.background = `linear-gradient(to right, #008542 0%, #008542 ${percent}%, #ddd ${percent}%, #ddd 100%)`;
-}
-
-function updatePpiValue() {
-  // Export uses 8x scale multiplier, base 72 PPI
-  const ppi = Math.round(state.scale * 8 * 72);
-  elements.ppiValue.textContent = ppi;
-}
-
 elements.scale.addEventListener('input', (e) => {
   state.scale = parseFloat(e.target.value);
-  elements.scaleValue.textContent = state.scale.toFixed(1);
-  updateSliderTrack();
-  updatePpiValue();
+  updateControlReadouts();
   renderPreview();
 });
 
@@ -776,9 +941,41 @@ elements.showIsolation.addEventListener('change', (e) => {
   renderPreview();
 });
 
+elements.fontFamily.addEventListener('change', (e) => {
+  state.fontFamily = e.target.value;
+  renderPreview();
+});
+
+elements.fontScale2.addEventListener('input', (e) => {
+  state.fontScale2 = parseFloat(e.target.value);
+  updateControlReadouts();
+  renderPreview();
+});
+
+elements.letterSpacing.addEventListener('input', (e) => {
+  state.letterSpacing = parseFloat(e.target.value);
+  updateControlReadouts();
+  renderPreview();
+});
+
 elements.exportPNG.addEventListener('click', () => exportRaster('png'));
 elements.exportJPEG.addEventListener('click', () => exportRaster('jpeg'));
 elements.exportSVG.addEventListener('click', exportSVG);
+elements.copyPNG.addEventListener('click', copyPNG);
+elements.copyLink.addEventListener('click', copyLink);
+
+elements.savePreset.addEventListener('click', savePreset);
+elements.exportLibrary.addEventListener('click', exportLibrary);
+elements.importLibrary.addEventListener('change', (e) => {
+  if (e.target.files[0]) {
+    importLibrary(e.target.files[0]);
+    e.target.value = '';
+  }
+});
+
+for (const btn of document.querySelectorAll('.backdrop-toggle button')) {
+  btn.addEventListener('click', () => setBackdrop(btn.dataset.backdrop));
+}
 
 // Enable drag-and-drop from preview image (native browser handling)
 elements.previewImage.draggable = true;
@@ -787,7 +984,8 @@ elements.previewImage.draggable = true;
 // Initialize
 // ============================================================================
 
-// Re-read all form values on load (browser may remember form state)
+// Re-read all form values on load (browser may remember form state),
+// then overlay anything a share link specifies
 state.layout = elements.layout.value;
 state.textMode = elements.textMode.value;
 state.line1 = elements.line1.value;
@@ -796,11 +994,19 @@ state.line3 = elements.line3.value;
 state.logoColor = elements.logoColor.value;
 state.bgColor = elements.bgColor.value;
 state.scale = parseFloat(elements.scale.value);
-elements.scaleValue.textContent = state.scale.toFixed(1);
-updateSliderTrack();
-updatePpiValue();
-state.reverse = elements.reverseMode.checked;
+state.transparentBg = elements.transparentBg.checked;
 state.showIsolation = elements.showIsolation.checked;
 
+const urlState = readStateFromUrl();
+Object.assign(state, urlState);
+reflectStateToControls();
 updateTextModeUI();
+// updateTextModeUI forces mode-default Line 1 text; a share link's wins
+if (urlState.line1 !== undefined) {
+  state.line1 = urlState.line1;
+  elements.line1.value = urlState.line1;
+}
+
+setBackdrop(localStorage.getItem(BACKDROP_KEY) || 'checker');
+renderPresetList();
 loadDefaultImage();
