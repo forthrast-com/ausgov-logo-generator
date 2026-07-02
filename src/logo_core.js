@@ -161,7 +161,6 @@ const PARAM_MAP = {
   logoColor: 'fg',
   bgColor: 'bg',
   scale: 'sc',
-  showIsolation: 'iso',
   transparentBg: 'tr',
   fontFamily: 'ff',
   fontScale2: 'fs',
@@ -196,6 +195,45 @@ function paramsToState(params, defaults) {
     }
   }
   return out;
+}
+
+// ============================================================================
+// Colour
+// ============================================================================
+
+function hexToRgb(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+// WCAG relative-luminance contrast ratio (1..21), or null for unparseable
+// colours. Used to flag combos the guidelines prohibit (pastel on light,
+// dark on dark, tints).
+function contrastRatio(hexA, hexB) {
+  const a = hexToRgb(hexA);
+  const b = hexToRgb(hexB);
+  if (!a || !b) return null;
+
+  const channel = (c) => {
+    c /= 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  const luminance = ([r, g, bl]) => 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(bl);
+
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+// Recolour a monochrome SVG (the Conventional 3A Solid arms) so the whole
+// logo stays single-colour per the guidelines. Overrides explicit fills
+// (except fill="none") and sets a root fill for paths that inherit.
+function recolourSvg(svgText, colour) {
+  return svgText
+    .replace(/fill="(?!none")[^"]*"/gi, `fill="${colour}"`)
+    .replace(/fill:(?!\s*none)[^;"'}]*/gi, `fill:${colour}`)
+    .replace(/<svg\b(?![^>]*\bfill=)/i, `<svg fill="${colour}"`);
 }
 
 // ============================================================================
@@ -254,6 +292,8 @@ const logo_core = {
   escapeXml,
   stateToParams,
   paramsToState,
+  contrastRatio,
+  recolourSvg,
   crc32,
   pngWithPpi
 };

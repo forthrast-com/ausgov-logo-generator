@@ -11,19 +11,21 @@ in inline / stacked / strip layout variants, exportable as PNG, JPEG, or SVG.
 - Four layout variants: inline, inline strip, stacked, stacked strip
 - Text modes: department, initiative, hierarchy, free entry
 - Custom logo and background colours, optional transparent background
+- Guidelines-approved colour preset swatches (black, navy, maroon, dark
+  green, charcoal, reversed) with a low-contrast warning
+- The coat of arms recolours with the logo colour, keeping the whole
+  logo single-colour as the guidelines require (min arms width on
+  stationery is 20mm - the PPI readout helps you size for that)
 - Custom image upload (PNG/JPEG/SVG) with sensible sizing rules
 - Logo library: save named presets to localStorage, export/import as JSON
 - Shareable URLs: the address bar always encodes the current design
 - Typography controls (font, secondary size ratio, letter spacing),
   tucked into the Library & Typography drawer
 - Balanced text wrapping; explicit line breaks honoured everywhere
-- Isolation-zone preview (clear space of half the arms height, per the
-  brand clear-space rule)
 - Scale slider with export PPI readout; exported PNGs carry a matching
   pHYs density chunk
 - PNG / JPEG / SVG export with auto-generated filenames, plus
   copy-to-clipboard for PNG and share link
-- Preview backdrop toggle: checkerboard / white / dark
 
 ## Architecture
 

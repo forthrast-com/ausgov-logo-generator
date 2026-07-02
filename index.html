@@ -59,6 +59,18 @@
       </div>
     </div>
 
+    <div class="control-group">
+      <div class="swatch-row">
+        <button type="button" class="swatch" data-fg="#000000" data-bg="#ffffff" title="Black on white (preferred)" style="background: linear-gradient(135deg, #000000 50%, #ffffff 50%);"></button>
+        <button type="button" class="swatch" data-fg="#00205b" data-bg="#ffffff" title="Navy on white" style="background: linear-gradient(135deg, #00205b 50%, #ffffff 50%);"></button>
+        <button type="button" class="swatch" data-fg="#611c25" data-bg="#ffffff" title="Maroon on white" style="background: linear-gradient(135deg, #611c25 50%, #ffffff 50%);"></button>
+        <button type="button" class="swatch" data-fg="#1e4620" data-bg="#ffffff" title="Dark green on white" style="background: linear-gradient(135deg, #1e4620 50%, #ffffff 50%);"></button>
+        <button type="button" class="swatch" data-fg="#36454f" data-bg="#ffffff" title="Charcoal on white" style="background: linear-gradient(135deg, #36454f 50%, #ffffff 50%);"></button>
+        <button type="button" class="swatch" data-fg="#ffffff" data-bg="#000000" title="Reversed - white on black" style="background: linear-gradient(135deg, #ffffff 50%, #000000 50%);"></button>
+      </div>
+      <p class="contrast-warning hidden" id="contrastWarning">Low contrast - the guidelines require the logo to stay clearly legible (no pastels on light, no dark on dark).</p>
+    </div>
+
     <div class="checkbox-group">
       <input type="checkbox" id="transparentBg">
       <label for="transparentBg">Transparent Background (PNG/SVG)</label>
@@ -79,11 +91,6 @@
       <label>Scale: <span id="scaleValue">1.0</span>x</label>
       <input type="range" id="scale" min="0.5" max="3" step="0.1" value="1">
       <div class="scale-ppi">Export: ~<span id="ppiValue">576</span> PPI</div>
-    </div>
-
-    <div class="checkbox-group">
-      <input type="checkbox" id="showIsolation">
-      <label for="showIsolation" title="Minimum clear space required around the logo - nothing else may sit inside the shaded area">Show Isolation Zone (min clear space)</label>
     </div>
 
     <div class="control-group">

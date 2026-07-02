@@ -6,6 +6,8 @@ const {
   escapeXml,
   stateToParams,
   paramsToState,
+  contrastRatio,
+  recolourSvg,
   pngWithPpi
 } = globalThis.logo_core;
 
@@ -23,7 +25,6 @@ const STATE_DEFAULTS = {
   logoColor: '#000000',
   bgColor: '#ffffff',
   scale: 1,
-  showIsolation: false,
   transparentBg: false,
   fontFamily: '"Times New Roman", Times, serif',
   fontScale2: 0.8,
@@ -50,9 +51,9 @@ const elements = {};
 for (const id of [
   'layout', 'textMode', 'line1', 'line2', 'line3',
   'line1Group', 'line2Group', 'line3Group',
-  'logoColor', 'bgColor', 'transparentBg',
+  'logoColor', 'bgColor', 'transparentBg', 'contrastWarning',
   'imageUpload', 'resetImage',
-  'scale', 'scaleValue', 'ppiValue', 'showIsolation',
+  'scale', 'scaleValue', 'ppiValue',
   'exportPNG', 'exportJPEG', 'exportSVG', 'copyPNG', 'copyLink',
   'presetName', 'savePreset', 'presetList', 'exportLibrary', 'importLibrary',
   'fontFamily', 'fontScale2', 'fontScale2Value', 'letterSpacing', 'letterSpacingValue',
@@ -152,25 +153,35 @@ function loadImage(src) {
   });
 }
 
+// Raw arms markup, kept so the default image can be recoloured to the logo
+// colour (the guidelines require every element in a single colour)
+let defaultArmsSvgText = null;
+
+async function recolourDefaultArms(colour, { adopt = false } = {}) {
+  if (!defaultArmsSvgText) return;
+  const wasCurrent = adopt || !state.image || state.image === state.defaultImage;
+
+  const svgText = recolourSvg(defaultArmsSvgText, colour);
+  const dataUri = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgText)));
+  const { aspect, pngDataUri } = await loadImage(dataUri);
+
+  state.defaultImage = dataUri;
+  state.defaultImageAspect = aspect;
+  state.defaultImagePng = pngDataUri;
+
+  if (wasCurrent) {
+    state.image = dataUri;
+    state.imageAspect = aspect;
+    state.imagePng = pngDataUri;
+    state.imageBaseline = state.defaultImageBaseline;
+  }
+}
+
 async function loadDefaultImage() {
   try {
     const response = await fetch('assets/coat-of-arms.svg');
-    const svgText = await response.text();
-    const dataUri = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgText)));
-
-    const { aspect, pngDataUri } = await loadImage(dataUri);
-    state.defaultImage = dataUri;
-    state.defaultImageAspect = aspect;
-    state.defaultImagePng = pngDataUri;
-
-    // Set as current image unless a preset already provided one
-    if (!state.image) {
-      state.image = dataUri;
-      state.imageAspect = aspect;
-      state.imagePng = pngDataUri;
-      state.imageBaseline = state.defaultImageBaseline;
-    }
-
+    defaultArmsSvgText = await response.text();
+    await recolourDefaultArms(state.logoColor);
     renderPreview();
   } catch (e) {
     console.error('Failed to load default image:', e);
@@ -412,20 +423,14 @@ function layoutLogo(scale) {
 // Rendering - SVG Emission
 // ============================================================================
 
-function emitLogoSVG(geom, { showIsolation = false, forExport = false, transparent = false } = {}) {
+function emitLogoSVG(geom, { forExport = false, transparent = false } = {}) {
   const {
-    s, fontSize1, fontSize2, lineSpacing, underlineHeight, letterSpacing,
-    imgX, imgY, imageWidth, actualImageHeight,
+    fontSize1, fontSize2, lineSpacing, underlineHeight, letterSpacing,
+    width, height, imgX, imgY, imageWidth, actualImageHeight,
     textX, textY, textAnchor, textBlockWidth,
     line1Lines, line2Lines, line3Lines,
     visible: { hasLine1, hasLine2, hasLine3, hasUnderline }
   } = geom;
-
-  // Isolation zone: clear space of half the arms/image height on every side,
-  // drawn outside the logo bounds (per the AG brand clear-space rule)
-  const iso = showIsolation ? actualImageHeight / 2 : 0;
-  const width = geom.width + iso * 2;
-  const height = geom.height + iso * 2;
 
   // Use PNG version for exports as SVG-in-SVG often doesn't render
   const imageHref = forExport ? (state.imagePng || state.image || '') : (state.image || '');
@@ -439,15 +444,6 @@ function emitLogoSVG(geom, { showIsolation = false, forExport = false, transpare
 
   if (!transparent) {
     svgContent.push(`<rect width="100%" height="100%" fill="${state.bgColor}"/>`);
-  }
-
-  if (iso) {
-    // Shade the clear-space margin (donut via evenodd) so the zone reads as
-    // "keep this area empty" rather than the preview just growing. Preview
-    // only - exports never render the isolation zone.
-    svgContent.push(`<path d="M0 0 H${width} V${height} H0 Z M${iso} ${iso} V${iso + geom.height} H${iso + geom.width} V${iso} Z" fill-rule="evenodd" fill="rgba(0,0,0,0.08)"/>`);
-    svgContent.push(`<g transform="translate(${iso} ${iso})">`);
-    svgContent.push(`<rect x="0" y="0" width="${geom.width}" height="${geom.height}" fill="none" stroke="${state.logoColor}" stroke-opacity="0.5" stroke-width="${s}" stroke-dasharray="${5 * s},${5 * s}"/>`);
   }
 
   // Use both href and xlink:href for compatibility with different SVG viewers
@@ -489,10 +485,6 @@ function emitLogoSVG(geom, { showIsolation = false, forExport = false, transpare
       currentY += lineSpacing + fontSize2;
       svgContent.push(`<text x="${textX}" y="${currentY}" font-size="${fontSize2}" ${fontNormal}>${escapeXml(line)}</text>`);
     }
-  }
-
-  if (iso) {
-    svgContent.push('</g>');
   }
 
   return {
@@ -548,7 +540,6 @@ async function renderPreview() {
   // 3x for crisp preview
   const scale = state.scale * 3;
   const { svg, width, height } = buildLogoSVG(scale, {
-    showIsolation: state.showIsolation,
     transparent: state.transparentBg
   });
   const canvas = elements.renderCanvas;
@@ -735,16 +726,14 @@ async function applyPreset(preset) {
   try {
     if (preset.image) {
       await setImageFromDataUri(preset.image, preset.imageBaseline ?? null);
-    } else if (state.defaultImage) {
-      state.image = state.defaultImage;
-      state.imageAspect = state.defaultImageAspect;
-      state.imagePng = state.defaultImagePng;
-      state.imageBaseline = state.defaultImageBaseline;
+    } else {
+      await recolourDefaultArms(state.logoColor, { adopt: true });
     }
   } catch (e) {
     console.error('Failed to load preset image:', e);
   }
 
+  updateContrastWarning();
   renderPreview();
 }
 
@@ -837,6 +826,15 @@ function updateCopyLinkState() {
     : 'Copy a link to this design';
 }
 
+// The guidelines prohibit low-contrast combos (pastel on light, dark on
+// dark, tints). 4.5:1 is the WCAG AA line - a decent proxy for "integrity
+// of the logo is not compromised".
+function updateContrastWarning() {
+  const ratio = contrastRatio(state.logoColor, state.bgColor);
+  const low = ratio !== null && ratio < 4.5 && !state.transparentBg;
+  elements.contrastWarning.classList.toggle('hidden', !low);
+}
+
 function reflectStateToControls() {
   elements.layout.value = state.layout;
   elements.textMode.value = state.textMode;
@@ -846,7 +844,6 @@ function reflectStateToControls() {
   elements.logoColor.value = state.logoColor;
   elements.bgColor.value = state.bgColor;
   elements.transparentBg.checked = state.transparentBg;
-  elements.showIsolation.checked = state.showIsolation;
   elements.scale.value = state.scale;
   elements.fontFamily.value = state.fontFamily;
   elements.fontScale2.value = state.fontScale2;
@@ -899,20 +896,48 @@ for (const key of ['line1', 'line2', 'line3']) {
   });
 }
 
+// Text recolours instantly; the arms re-rasterise on a debounce because
+// regenerating the ~2000px PNG on every colour-picker tick is too heavy
+let armsRecolourTimer = null;
+
+function scheduleArmsRecolour() {
+  clearTimeout(armsRecolourTimer);
+  armsRecolourTimer = setTimeout(async () => {
+    await recolourDefaultArms(state.logoColor);
+    renderPreview();
+  }, 150);
+}
+
 elements.logoColor.addEventListener('input', (e) => {
   state.logoColor = e.target.value;
+  updateContrastWarning();
   renderPreview();
+  scheduleArmsRecolour();
 });
 
 elements.bgColor.addEventListener('input', (e) => {
   state.bgColor = e.target.value;
+  updateContrastWarning();
   renderPreview();
 });
 
 elements.transparentBg.addEventListener('change', (e) => {
   state.transparentBg = e.target.checked;
+  updateContrastWarning();
   renderPreview();
 });
+
+for (const swatch of document.querySelectorAll('.swatch')) {
+  swatch.addEventListener('click', async () => {
+    state.logoColor = swatch.dataset.fg;
+    state.bgColor = swatch.dataset.bg;
+    elements.logoColor.value = state.logoColor;
+    elements.bgColor.value = state.bgColor;
+    updateContrastWarning();
+    await recolourDefaultArms(state.logoColor);
+    renderPreview();
+  });
+}
 
 elements.imageUpload.addEventListener('change', (e) => {
   if (e.target.files[0]) {
@@ -920,12 +945,9 @@ elements.imageUpload.addEventListener('change', (e) => {
   }
 });
 
-elements.resetImage.addEventListener('click', () => {
-  // Reset to default image
-  state.image = state.defaultImage;
-  state.imageAspect = state.defaultImageAspect;
-  state.imagePng = state.defaultImagePng;
-  state.imageBaseline = state.defaultImageBaseline;
+elements.resetImage.addEventListener('click', async () => {
+  // Reset to the default arms, recoloured to the current logo colour
+  await recolourDefaultArms(state.logoColor, { adopt: true });
   elements.imageUpload.value = '';
   renderPreview();
 });
@@ -933,11 +955,6 @@ elements.resetImage.addEventListener('click', () => {
 elements.scale.addEventListener('input', (e) => {
   state.scale = parseFloat(e.target.value);
   updateControlReadouts();
-  renderPreview();
-});
-
-elements.showIsolation.addEventListener('change', (e) => {
-  state.showIsolation = e.target.checked;
   renderPreview();
 });
 
@@ -991,7 +1008,6 @@ state.logoColor = elements.logoColor.value;
 state.bgColor = elements.bgColor.value;
 state.scale = parseFloat(elements.scale.value);
 state.transparentBg = elements.transparentBg.checked;
-state.showIsolation = elements.showIsolation.checked;
 
 const urlState = readStateFromUrl();
 Object.assign(state, urlState);
@@ -1005,4 +1021,5 @@ if (urlState.line1 !== undefined) {
 
 renderPresetList();
 updateCopyLinkState();
+updateContrastWarning();
 loadDefaultImage();

@@ -8,6 +8,8 @@ const {
   escapeXml,
   stateToParams,
   paramsToState,
+  contrastRatio,
+  recolourSvg,
   crc32,
   pngWithPpi
 } = require('../src/logo_core.js');
@@ -135,7 +137,6 @@ const DEFAULTS = {
   logoColor: '#000000',
   bgColor: '#ffffff',
   scale: 1,
-  showIsolation: false,
   transparentBg: false,
   fontFamily: '"Times New Roman", Times, serif',
   fontScale2: 0.8,
@@ -164,6 +165,47 @@ test('state round-trips through params', () => {
 test('paramsToState drops malformed numbers', () => {
   const params = new URLSearchParams('sc=banana');
   assert.deepEqual(paramsToState(params, DEFAULTS), {});
+});
+
+// ============================================================================
+// Colour
+// ============================================================================
+
+test('contrastRatio: black on white is 21', () => {
+  assert.equal(contrastRatio('#000000', '#ffffff'), 21);
+});
+
+test('contrastRatio is symmetric', () => {
+  assert.equal(contrastRatio('#00205b', '#ffffff'), contrastRatio('#ffffff', '#00205b'));
+});
+
+test('contrastRatio flags a pastel-on-white combo as low', () => {
+  assert.ok(contrastRatio('#ffe4b5', '#ffffff') < 4.5);
+});
+
+test('contrastRatio returns null for junk input', () => {
+  assert.equal(contrastRatio('banana', '#ffffff'), null);
+});
+
+test('recolourSvg overrides explicit fills but not fill="none"', () => {
+  const svg = '<svg xmlns="x"><path fill="#000000" d="M0 0"/><path fill="none" d="M1 1"/></svg>';
+  const out = recolourSvg(svg, '#00205b');
+  assert.ok(out.includes('fill="#00205b"'));
+  assert.ok(out.includes('fill="none"'));
+  assert.ok(!out.includes('fill="#000000"'));
+});
+
+test('recolourSvg adds a root fill for inherited paths', () => {
+  const svg = '<svg xmlns="x"><path d="M0 0"/></svg>';
+  const out = recolourSvg(svg, '#611c25');
+  assert.ok(out.startsWith('<svg fill="#611c25"'));
+});
+
+test('recolourSvg rewrites style-attribute fills', () => {
+  const svg = '<svg fill="#000"><path style="fill:#333;stroke:none" d="M0 0"/></svg>';
+  const out = recolourSvg(svg, '#1e4620');
+  assert.ok(out.includes('fill:#1e4620'));
+  assert.ok(!out.includes('#333'));
 });
 
 // ============================================================================

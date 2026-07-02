@@ -138,6 +138,32 @@ body {
   text-align: right;
 }
 
+/* Colour preset swatches (guidelines-approved combos) */
+.swatch-row {
+  display: flex;
+  gap: 8px;
+}
+
+.swatch {
+  width: 32px;
+  height: 32px;
+  border: 2px solid #4A7C2F;
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.swatch:hover {
+  border-color: #00205B;
+}
+
+.contrast-warning {
+  font-size: 12px;
+  color: #9B1C1C;
+  margin-top: 8px;
+  line-height: 1.4;
+}
+
 .control-row {
   display: flex;
   gap: 12px;
