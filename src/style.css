@@ -367,6 +367,7 @@ body {
 /* Preview Area */
 .preview-area {
   flex: 1;
+  align-self: stretch;
   position: relative;
   display: flex;
   align-items: center;

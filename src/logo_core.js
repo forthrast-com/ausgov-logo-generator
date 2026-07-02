@@ -1,7 +1,11 @@
 // Pure logic shared by the browser app and the node test suite.
 // No DOM access: text measurement comes in as an injected measure(text) -> px
 // function, so tests can use a fake measurer and the app can bind a canvas.
-
+//
+// IIFE-wrapped: classic scripts share one global lexical scope, so top-level
+// const/function declarations here would collide with app.js redeclaring the
+// same names when it destructures globalThis.logo_core.
+(() => {
 const AUSTRALIAN_GOV_TEXT = 'Australian Government';
 
 // ============================================================================
@@ -259,3 +263,4 @@ if (typeof module !== 'undefined' && module.exports) {
 } else {
   globalThis.logo_core = logo_core;
 }
+})();
