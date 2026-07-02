@@ -188,6 +188,11 @@ body {
   border: 2px solid #4A7C2F;
 }
 
+/* Fill the wrapper so paired buttons (e.g. Export/Import JSON) stay equal */
+.file-input-wrapper .btn {
+  width: 100%;
+}
+
 /* Buttons */
 .btn {
   padding: 10px 16px;
@@ -201,6 +206,11 @@ body {
 }
 
 .btn:hover { opacity: 0.9; }
+
+.btn:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
 
 .btn-primary:hover,
 .btn-secondary:hover {
@@ -376,35 +386,6 @@ body {
   overflow: auto;
 }
 
-/* Preview backdrop variants (checkerboard is the body default) */
-body.backdrop-white { background: #fff; }
-body.backdrop-dark { background: #1e1e1e; }
-body.backdrop-dark .preview-hint { color: #aaa; }
-
-.backdrop-toggle {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  display: flex;
-  gap: 4px;
-}
-
-.backdrop-toggle button {
-  width: 32px;
-  height: 32px;
-  border: 2px solid #4A7C2F;
-  border-radius: 8px;
-  background: #fff;
-  color: #00205B;
-  font-size: 14px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.backdrop-toggle button.active {
-  background: #4A7C2F;
-  color: #FFB81C;
-}
 
 .preview-wrapper {
   display: flex;

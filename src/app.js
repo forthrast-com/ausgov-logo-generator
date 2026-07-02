@@ -56,7 +56,7 @@ for (const id of [
   'exportPNG', 'exportJPEG', 'exportSVG', 'copyPNG', 'copyLink',
   'presetName', 'savePreset', 'presetList', 'exportLibrary', 'importLibrary',
   'fontFamily', 'fontScale2', 'fontScale2Value', 'letterSpacing', 'letterSpacingValue',
-  'previewImage', 'previewArea', 'renderCanvas'
+  'previewImage', 'renderCanvas'
 ]) {
   elements[id] = document.getElementById(id);
 }
@@ -118,6 +118,8 @@ function flashButton(button, text) {
   setTimeout(() => {
     button.textContent = original;
     button.disabled = false;
+    // Restoring disabled=false may wrongly re-enable a greyed-out Copy Link
+    updateCopyLinkState();
   }, 1200);
 }
 
@@ -440,8 +442,12 @@ function emitLogoSVG(geom, { showIsolation = false, forExport = false, transpare
   }
 
   if (iso) {
+    // Shade the clear-space margin (donut via evenodd) so the zone reads as
+    // "keep this area empty" rather than the preview just growing. Preview
+    // only - exports never render the isolation zone.
+    svgContent.push(`<path d="M0 0 H${width} V${height} H0 Z M${iso} ${iso} V${iso + geom.height} H${iso + geom.width} V${iso} Z" fill-rule="evenodd" fill="rgba(0,0,0,0.08)"/>`);
     svgContent.push(`<g transform="translate(${iso} ${iso})">`);
-    svgContent.push(`<rect x="0" y="0" width="${geom.width}" height="${geom.height}" fill="none" stroke="${state.logoColor}" stroke-width="${s}" stroke-dasharray="${5 * s},${5 * s}"/>`);
+    svgContent.push(`<rect x="0" y="0" width="${geom.width}" height="${geom.height}" fill="none" stroke="${state.logoColor}" stroke-opacity="0.5" stroke-width="${s}" stroke-dasharray="${5 * s},${5 * s}"/>`);
   }
 
   // Use both href and xlink:href for compatibility with different SVG viewers
@@ -537,6 +543,7 @@ async function renderPreview() {
   const token = ++previewRenderToken;
 
   syncUrl();
+  updateCopyLinkState();
 
   // 3x for crisp preview
   const scale = state.scale * 3;
@@ -813,29 +820,22 @@ function importLibrary(file) {
 }
 
 // ============================================================================
-// Preview Backdrop
-// ============================================================================
-
-const BACKDROP_KEY = 'agl.backdrop';
-
-function setBackdrop(mode) {
-  document.body.classList.remove('backdrop-white', 'backdrop-dark');
-  if (mode === 'white' || mode === 'dark') {
-    document.body.classList.add(`backdrop-${mode}`);
-  }
-  for (const btn of document.querySelectorAll('.backdrop-toggle button')) {
-    btn.classList.toggle('active', btn.dataset.backdrop === mode);
-  }
-  try {
-    localStorage.setItem(BACKDROP_KEY, mode);
-  } catch {
-    // Preview preference only; losing it is fine
-  }
-}
-
-// ============================================================================
 // Control Sync
 // ============================================================================
+
+function usingCustomImage() {
+  return !!(state.image && state.defaultImage && state.image !== state.defaultImage);
+}
+
+// Share links can't carry uploaded images (data URIs don't fit in a URL),
+// so the link button greys out whenever a custom image is in play
+function updateCopyLinkState() {
+  const custom = usingCustomImage();
+  elements.copyLink.disabled = custom;
+  elements.copyLink.title = custom
+    ? "Share links can't include uploaded images"
+    : 'Copy a link to this design';
+}
 
 function reflectStateToControls() {
   elements.layout.value = state.layout;
@@ -973,10 +973,6 @@ elements.importLibrary.addEventListener('change', (e) => {
   }
 });
 
-for (const btn of document.querySelectorAll('.backdrop-toggle button')) {
-  btn.addEventListener('click', () => setBackdrop(btn.dataset.backdrop));
-}
-
 // Enable drag-and-drop from preview image (native browser handling)
 elements.previewImage.draggable = true;
 
@@ -1007,6 +1003,6 @@ if (urlState.line1 !== undefined) {
   elements.line1.value = urlState.line1;
 }
 
-setBackdrop(localStorage.getItem(BACKDROP_KEY) || 'checker');
 renderPresetList();
+updateCopyLinkState();
 loadDefaultImage();

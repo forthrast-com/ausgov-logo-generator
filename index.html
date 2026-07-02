@@ -83,7 +83,7 @@
 
     <div class="checkbox-group">
       <input type="checkbox" id="showIsolation">
-      <label for="showIsolation">Show Isolation Zone</label>
+      <label for="showIsolation" title="Minimum clear space required around the logo - nothing else may sit inside the shaded area">Show Isolation Zone (min clear space)</label>
     </div>
 
     <div class="control-group">
@@ -100,10 +100,8 @@
     </div>
 
     <details class="drawer">
-      <summary>Library &amp; Typography</summary>
-
+      <summary>Logo Library</summary>
       <div class="drawer-section">
-        <label>Logo Library</label>
         <div class="btn-group">
           <input type="text" id="presetName" class="preset-name" placeholder="Preset name">
           <button class="btn btn-primary" id="savePreset">Save</button>
@@ -117,9 +115,11 @@
           </div>
         </div>
       </div>
+    </details>
 
+    <details class="drawer">
+      <summary>Typography</summary>
       <div class="drawer-section">
-        <label>Typography</label>
         <div class="control-group">
           <label class="sub-label">Font</label>
           <select id="fontFamily">
@@ -144,12 +144,7 @@
     <p class="footer-note">Unofficial tool, not affiliated with the Australian Government. Use of the Commonwealth Coat of Arms is subject to <a href="https://www.pmc.gov.au/resources/commonwealth-coat-arms-information-and-guidelines" target="_blank" rel="noopener">PM&amp;C guidelines</a>.</p>
   </div>
 
-  <div class="preview-area" id="previewArea">
-    <div class="backdrop-toggle" role="group" aria-label="Preview backdrop">
-      <button type="button" data-backdrop="checker" title="Checkerboard backdrop">▦</button>
-      <button type="button" data-backdrop="white" title="White backdrop">□</button>
-      <button type="button" data-backdrop="dark" title="Dark backdrop">■</button>
-    </div>
+  <div class="preview-area">
     <div class="preview-wrapper">
       <img id="previewImage" alt="Logo preview - right-click to save">
       <p class="preview-hint">Right-click or long-press to save image</p>
