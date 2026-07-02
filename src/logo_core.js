@@ -235,12 +235,13 @@ function contrastRatio(hexA, hexB) {
 function recolourSvg(svgText, colour, knockout = '#ffffff') {
   const isWhite = (v) => /^(#fff(fff)?|white)$/i.test(v.trim());
   const isNone = (v) => /^none$/i.test(v.trim());
+  const map = (v) => (isWhite(v) ? knockout : colour);
 
   return svgText
-    .replace(/fill="([^"]*)"/gi, (m, v) =>
-      isNone(v) ? m : `fill="${isWhite(v) ? knockout : colour}"`)
-    .replace(/fill:([^;"'}]*)/gi, (m, v) =>
-      isNone(v) ? m : `fill:${isWhite(v) ? knockout : colour}`)
+    .replace(/fill="([^"]*)"/gi, (m, v) => isNone(v) ? m : `fill="${map(v)}"`)
+    .replace(/fill:([^;"'}]*)/gi, (m, v) => isNone(v) ? m : `fill:${map(v)}`)
+    .replace(/stroke="([^"]*)"/gi, (m, v) => isNone(v) ? m : `stroke="${map(v)}"`)
+    .replace(/stroke:([^;"'}]*)/gi, (m, v) => isNone(v) ? m : `stroke:${map(v)}`)
     .replace(/<svg\b(?![^>]*\bfill=)/i, `<svg fill="${colour}"`);
 }
 

@@ -209,6 +209,15 @@ test('recolourSvg keeps white knockouts white by default', () => {
   assert.ok(out.includes('fill="#ffffff"'));
 });
 
+test('recolourSvg recolours strokes but not stroke="none" or stroke-width', () => {
+  const svg = '<svg><path stroke="#000" stroke-width="2"/><path stroke="none"/><path stroke="#fff"/></svg>';
+  const out = recolourSvg(svg, '#182d56', '#deeabb');
+  assert.ok(out.includes('stroke="#182d56"'));
+  assert.ok(out.includes('stroke="none"'));
+  assert.ok(out.includes('stroke="#deeabb"'));
+  assert.ok(out.includes('stroke-width="2"'));
+});
+
 test('recolourSvg adds a root fill for inherited paths', () => {
   const svg = '<svg xmlns="x"><path d="M0 0"/></svg>';
   const out = recolourSvg(svg, '#611c25');
