@@ -10,9 +10,15 @@ const state = {
   reverse: false,
   scale: 1,
   showIsolation: false,
-  customImage: null,
-  customImageType: null,
-  coaDataUri: null  // Base64 data URI of the coat of arms
+  // Image state (CoA is just the default image)
+  image: null,          // Current image data URI
+  imageAspect: 1,       // width/height ratio
+  imagePng: null,       // PNG version for SVG export
+  imageBaseline: null,  // Custom baseline alignment (0-1), null = center
+  defaultImage: null,   // Default CoA image
+  defaultImageAspect: 1,
+  defaultImagePng: null,
+  defaultImageBaseline: 0.62  // CoA base is 62% down
 };
 
 // DOM element references
@@ -44,8 +50,8 @@ const elements = {
 // Base dimensions (before scaling)
 const BASE = {
   imageHeight: 80,
-  fontSize1: 18,
-  fontSize2: 13,
+  fontSize1: 20,
+  fontSize2: 16,    // Lines 2 and 3 (same as Line 1)
   padding: 20,
   gap: 12,
   underlineHeight: 1,
@@ -102,36 +108,67 @@ function updateTextModeUI() {
 // Image Loading
 // ============================================================================
 
-async function loadDefaultCoA() {
+// Load an image and get its data URI, aspect ratio, and PNG version
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const aspect = img.width / img.height || 1;
+
+      // Create PNG version for export compatibility (SVG-in-SVG doesn't
+      // render in many viewers). Rasterise at ~2000px tall so it stays crisp
+      // at the 8x+ export scales, not at the SVG's small intrinsic size.
+      const pngScale = Math.max(2, 2000 / (img.height || 500));
+      const canvas = document.createElement('canvas');
+      canvas.width = (img.width || 200) * pngScale;
+      canvas.height = (img.height || 250) * pngScale;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const pngDataUri = canvas.toDataURL('image/png');
+
+      resolve({ dataUri: src, aspect, pngDataUri });
+    };
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+async function loadDefaultImage() {
   try {
     const response = await fetch('assets/coat-of-arms.svg');
     const svgText = await response.text();
-    state.coaDataUri = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgText)));
+    const dataUri = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgText)));
 
-    // Also create PNG version for SVG export (SVG-in-SVG often doesn't render in viewers)
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      // High resolution for quality
-      canvas.width = img.width * 2 || 400;
-      canvas.height = img.height * 2 || 500;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      state.coaPngDataUri = canvas.toDataURL('image/png');
-      renderPreview();
-    };
-    img.src = state.coaDataUri;
+    const { aspect, pngDataUri } = await loadImage(dataUri);
+    state.defaultImage = dataUri;
+    state.defaultImageAspect = aspect;
+    state.defaultImagePng = pngDataUri;
+
+    // Set as current image
+    state.image = dataUri;
+    state.imageAspect = aspect;
+    state.imagePng = pngDataUri;
+    state.imageBaseline = state.defaultImageBaseline;
+
+    renderPreview();
   } catch (e) {
-    console.error('Failed to load default coat of arms:', e);
+    console.error('Failed to load default image:', e);
   }
 }
 
 function handleImageUpload(file) {
   const reader = new FileReader();
   reader.onload = async (e) => {
-    state.customImage = e.target.result;
-    state.customImageType = file.type === 'image/svg+xml' || file.name.endsWith('.svg') ? 'svg' : 'raster';
-    await renderPreview();
+    try {
+      const { dataUri, aspect, pngDataUri } = await loadImage(e.target.result);
+      state.image = dataUri;
+      state.imageAspect = aspect;
+      state.imagePng = pngDataUri;
+      state.imageBaseline = null;  // Custom images use centered alignment
+      renderPreview();
+    } catch (err) {
+      console.error('Failed to load uploaded image:', err);
+    }
   };
   reader.readAsDataURL(file);
 }
@@ -140,9 +177,8 @@ function handleImageUpload(file) {
 // Text Wrapping
 // ============================================================================
 
-function wrapText(ctx, text, maxWidth, fontSize) {
-  ctx.font = `bold ${fontSize}px "Times New Roman", Times, serif`;
-  const words = text.split(' ');
+// Greedy first-fit wrap of one paragraph. Assumes ctx.font is already set.
+function greedyWrap(ctx, words, maxWidth) {
   const lines = [];
   let currentLine = '';
 
@@ -160,6 +196,48 @@ function wrapText(ctx, text, maxWidth, fontSize) {
 
   if (currentLine) {
     lines.push(currentLine);
+  }
+
+  return lines;
+}
+
+function wrapText(ctx, text, maxWidth, fontSize, bold = true) {
+  ctx.font = `${bold ? 'bold ' : ''}${fontSize}px "Times New Roman", Times, serif`;
+
+  // First split on explicit line breaks, then wrap each paragraph
+  const paragraphs = text.split('\n');
+  const lines = [];
+
+  for (const paragraph of paragraphs) {
+    if (!paragraph.trim()) {
+      // Empty line - preserve it
+      lines.push('');
+      continue;
+    }
+
+    const words = paragraph.split(' ');
+    let wrapped = greedyWrap(ctx, words, maxWidth);
+
+    // Balance multi-line wraps: binary-search the narrowest width that still
+    // fits in the same number of lines, so "...Regional Development and /
+    // Local Government" becomes two lines of similar length instead of one
+    // long and one short
+    if (wrapped.length > 1 && isFinite(maxWidth)) {
+      const lineCount = wrapped.length;
+      let lo = Math.max(...words.map(w => ctx.measureText(w).width));
+      let hi = maxWidth;
+      for (let i = 0; i < 12; i++) {
+        const mid = (lo + hi) / 2;
+        if (greedyWrap(ctx, words, mid).length > lineCount) {
+          lo = mid;
+        } else {
+          hi = mid;
+        }
+      }
+      wrapped = greedyWrap(ctx, words, hi);
+    }
+
+    lines.push(...wrapped);
   }
 
   return lines;
@@ -191,6 +269,51 @@ function escapeXml(str) {
   }[c]));
 }
 
+// Unified function to determine which elements to show
+// Applies empty-check logic consistently across all text modes
+function getVisibleElements() {
+  const line1Empty = !state.line1.trim();
+  const line2Empty = !state.line2.trim();
+  const line3Empty = !state.line3.trim();
+
+  // Determine if lines should be shown based on mode AND content
+  let hasLine1, hasLine2, hasLine3;
+
+  switch (state.textMode) {
+    case 'government':
+      hasLine1 = !line1Empty;
+      hasLine2 = false;
+      hasLine3 = false;
+      break;
+    case 'initiative':
+      hasLine1 = !line1Empty;
+      hasLine2 = false;
+      hasLine3 = false;
+      break;
+    case 'department':
+      hasLine1 = !line1Empty;
+      hasLine2 = !line2Empty;
+      hasLine3 = false;
+      break;
+    case 'hierarchy':
+      hasLine1 = !line1Empty;
+      hasLine2 = !line2Empty;
+      hasLine3 = !line3Empty;
+      break;
+    case 'free':
+    default:
+      hasLine1 = !line1Empty;
+      hasLine2 = !line2Empty;
+      hasLine3 = !line3Empty;
+      break;
+  }
+
+  // Underline shows when Line 1 exists AND there's content below it
+  const hasUnderline = hasLine1 && (hasLine2 || hasLine3);
+
+  return { hasLine1, hasLine2, hasLine3, hasUnderline };
+}
+
 function buildLogoSVG(scale, showIsolation = false, forExport = false) {
   const colors = getEffectiveColors();
   const tempCanvas = document.createElement('canvas');
@@ -205,29 +328,84 @@ function buildLogoSVG(scale, showIsolation = false, forExport = false) {
   const lineSpacing = BASE.lineSpacing * s;
   const underlineHeight = BASE.underlineHeight * s;
 
-  // Determine which lines to show
-  let hasLine1 = true;
-  let hasLine2, hasLine3, hasUnderline;
-
-  if (state.textMode === 'free') {
-    hasLine1 = state.line1.trim().length > 0;
-    hasLine2 = state.line2.trim().length > 0;
-    hasLine3 = state.line3.trim().length > 0;
-    hasUnderline = hasLine1 && (hasLine2 || hasLine3);
-  } else {
-    hasLine2 = state.textMode === 'department' || state.textMode === 'hierarchy';
-    hasLine3 = state.textMode === 'hierarchy';
-    hasUnderline = hasLine2;
-  }
+  // Determine which lines to show (unified logic for all modes)
+  const { hasLine1, hasLine2, hasLine3, hasUnderline } = getVisibleElements();
 
   // Layout flags
   const isStrip = state.layout === 'inline-strip' || state.layout === 'stacked-strip';
   const isImageOnTop = state.layout === 'stacked' || state.layout === 'stacked-strip';
 
-  // Measure Line 1 width (this determines wrap width for other lines)
-  const line1Width = hasLine1 ? measureText(ctx, state.line1, fontSize1).width : 0;
+  // Image aspect ratio and wide image detection
+  const imageAspect = state.imageAspect || 1;
+  const isWide = imageAspect > 1.2;  // Wider than ~1.2:1
 
-  // For non-strip: wrap Line 2 and Line 3 to Line 1's width
+  // Calculate minimum image width for wide stacked images (needed for text wrapping)
+  const minImageHeight = fontSize1 * 3.5;
+  const minWideImageWidth = isWide && isImageOnTop ? minImageHeight * imageAspect : 0;
+
+  // Default text width and max wrap width
+  const australianGovText = 'Australian Government';
+  const australianGovWidth = measureText(ctx, australianGovText, fontSize1).width;
+  const defaultMaxWidth = australianGovWidth;
+
+  // For stacked wide images, use the wider of default or image width for wrapping
+  const effectiveMaxWidth = isImageOnTop && isWide ? Math.max(defaultMaxWidth, minWideImageWidth) : defaultMaxWidth;
+
+  let line1Lines = [];
+  let line1Width = 0;
+
+  if (hasLine1) {
+    // "Australian Government" is the fixed lockup and never wraps; everything
+    // else goes through wrapText so explicit newlines survive (SVG collapses
+    // a raw \n inside <text> to a space). Strip layouts only disable
+    // width-based wrapping, not manual line breaks.
+    if (state.line1 === australianGovText) {
+      line1Lines = [state.line1];
+    } else {
+      line1Lines = wrapText(ctx, state.line1, isStrip ? Infinity : effectiveMaxWidth, fontSize1);
+    }
+    line1Width = Math.max(...line1Lines.map(l => measureText(ctx, l, fontSize1).width));
+  }
+
+  // Image dimensions
+  let imageWidth, actualImageHeight;
+  if (isImageOnTop) {
+    // For stacked wide images, use minimum height constraint
+    const minHeight = fontSize1 * 3;
+
+    // Target 2/3 of text width, or use min width for wide images
+    const baseWidth = (hasLine1 && line1Width > 0) ? line1Width : effectiveMaxWidth;
+    const targetWidth = baseWidth * 0.66;
+    const targetHeight = targetWidth / imageAspect;
+
+    if (targetHeight < minHeight && isWide) {
+      // Wide image needs minimum height - will be wider than text
+      actualImageHeight = minHeight;
+      imageWidth = minWideImageWidth;
+    } else {
+      imageWidth = targetWidth;
+      actualImageHeight = targetHeight;
+    }
+  } else {
+    // For inline: fixed height, but cap width for very wide images
+    const maxWidth = imageHeight * 2;  // Max 2:1 display ratio
+    actualImageHeight = imageHeight;
+    imageWidth = isWide ? Math.min(imageHeight * imageAspect, maxWidth) : imageHeight * imageAspect;
+  }
+
+  // Flexible wrap width for Lines 2/3
+  let wrapWidth;
+  if (hasLine1 && line1Width > 0) {
+    wrapWidth = line1Width;
+  } else if (isImageOnTop && isWide) {
+    // No Line 1, wide stacked image - wrap to image width
+    wrapWidth = imageWidth;
+  } else {
+    // Use effective max or let content determine width
+    wrapWidth = effectiveMaxWidth;
+  }
+
+  // For non-strip: wrap Line 2 and Line 3
   // For strip: no wrapping, all on one line
   let line2Lines = [];
   let line3Lines = [];
@@ -235,32 +413,24 @@ function buildLogoSVG(scale, showIsolation = false, forExport = false) {
   let line3Width = 0;
 
   if (hasLine2) {
-    if (isStrip) {
-      line2Lines = [state.line2];
-      line2Width = measureText(ctx, state.line2, fontSize2).width;
-    } else {
-      line2Lines = wrapText(ctx, state.line2, line1Width, fontSize2);
-      line2Width = Math.max(...line2Lines.map(l => measureText(ctx, l, fontSize2).width));
-    }
+    line2Lines = wrapText(ctx, state.line2, isStrip ? Infinity : wrapWidth, fontSize2);
+    line2Width = Math.max(...line2Lines.map(l => measureText(ctx, l, fontSize2).width));
   }
 
   if (hasLine3) {
-    if (isStrip) {
-      line3Lines = [state.line3];
-      line3Width = measureText(ctx, state.line3, fontSize2, false).width;
-    } else {
-      ctx.font = `${fontSize2}px "Times New Roman", Times, serif`; // Not bold for line 3
-      line3Lines = wrapText(ctx, state.line3, line1Width, fontSize2);
-      line3Width = Math.max(...line3Lines.map(l => measureText(ctx, l, fontSize2, false).width));
-    }
+    // Line 3 renders normal-weight, so measure/wrap it normal-weight too
+    line3Lines = wrapText(ctx, state.line3, isStrip ? Infinity : wrapWidth, fontSize2, false);
+    line3Width = Math.max(...line3Lines.map(l => measureText(ctx, l, fontSize2, false).width));
   }
 
-  // Image dimensions (assume square-ish aspect ratio for CoA, ~0.8 width:height)
-  let imageWidth = imageHeight * 0.8;
-
   // Calculate text block dimensions (always stacked, strip just disables wrapping)
-  let textBlockWidth = Math.max(line1Width, line2Width, line3Width);
-  let textBlockHeight = hasLine1 ? fontSize1 : 0;
+  // Width is determined by the widest text line present
+  let textBlockWidth = Math.max(line1Width || 0, line2Width, line3Width);
+  let textBlockHeight = 0;
+  if (hasLine1) {
+    textBlockHeight = fontSize1; // First line
+    textBlockHeight += (line1Lines.length - 1) * (fontSize1 + lineSpacing); // Additional wrapped lines
+  }
   // Underline gap above is larger to visually center it (accounts for Line 2 ascenders)
   if (hasUnderline) textBlockHeight += (lineSpacing + fontSize2 * 0.35) + underlineHeight + lineSpacing;
   if (hasLine2) {
@@ -269,45 +439,62 @@ function buildLogoSVG(scale, showIsolation = false, forExport = false) {
   }
   if (hasLine3) textBlockHeight += line3Lines.length * (fontSize2 + lineSpacing);
 
-  // Calculate total dimensions - tight crop around content
-  let width, height;
+  // Get image href (use PNG version for SVG export as SVG-in-SVG often doesn't render)
+  const imageHref = forExport ? (state.imagePng || state.image || '') : (state.image || '');
+
+  // Calculate positions and dimensions
+  let width, height, imgX, imgY, textX, textY, textAnchor;
+  const hasText = textBlockWidth > 0 && textBlockHeight > 0;
 
   if (isImageOnTop) {
-    width = padding * 2 + Math.max(imageWidth, textBlockWidth);
-    height = padding * 2 + imageHeight + gap + textBlockHeight;
-  } else {
-    width = padding * 2 + imageWidth + gap + textBlockWidth;
-    height = padding * 2 + Math.max(imageHeight, textBlockHeight);
-  }
-
-  // Get image href (use data URI for CoA so it works in blob-rendered SVG)
-  // For SVG export, use PNG version of coat of arms (SVG-in-SVG often doesn't render)
-  let imageHref;
-  if (state.customImage) {
-    imageHref = state.customImage;
-  } else if (forExport && state.coaPngDataUri) {
-    imageHref = state.coaPngDataUri;
-  } else {
-    imageHref = state.coaDataUri || '';
-  }
-
-  // Calculate positions
-  let imgX, imgY, textX, textY, textAnchor;
-
-  if (isImageOnTop) {
+    // Stacked: minimal padding and gap (just a line break between image and text)
+    const stackedPadding = lineSpacing * 2;
+    const stackedGap = hasText ? gap : 0;
+    width = stackedPadding * 2 + Math.max(imageWidth, textBlockWidth);
+    height = stackedPadding * 2 + actualImageHeight + stackedGap + textBlockHeight;
     imgX = (width - imageWidth) / 2;
-    imgY = padding;
+    imgY = stackedPadding;
     textX = width / 2;
-    textY = padding + imageHeight + gap + fontSize1;
+    // First baseline offset belongs to Line 1 only; Lines 2/3 add their own
+    // fontSize2 before drawing, so without Line 1 the block starts at the top
+    textY = stackedPadding + actualImageHeight + stackedGap + (hasLine1 ? fontSize1 : 0);
     textAnchor = 'middle';
   } else {
+    const inlineGap = hasText ? gap : 0;
+
+    // Calculate text Y position first to determine required height
+    let textTopY, textBottomY;
+
+    if (hasUnderline && state.imageBaseline !== null) {
+      // Align underline with image baseline (e.g., CoA base at 62%)
+      const baselineY = padding + actualImageHeight * state.imageBaseline;
+      const gapAbove = lineSpacing + fontSize2 * 0.35;
+      textY = baselineY - gapAbove;  // Line 1 baseline
+      textTopY = textY - fontSize1;
+      textBottomY = textY - fontSize1 + textBlockHeight;
+    } else {
+      // Center text vertically with image
+      const contentHeight = Math.max(actualImageHeight, textBlockHeight);
+      textTopY = padding + (contentHeight - textBlockHeight) / 2;
+      textBottomY = textTopY + textBlockHeight;
+      // Same deal as stacked: only offset by fontSize1 when Line 1 exists
+      textY = textTopY + (hasLine1 ? fontSize1 : 0);
+    }
+
+    // Ensure equal padding on all sides
+    const imageBottom = padding + actualImageHeight;
+    const contentBottom = Math.max(imageBottom, textBottomY);
+    const contentTop = Math.min(padding, textTopY);
+    const topAdjust = padding - contentTop;  // How much to shift down if text goes above
+
     imgX = padding;
-    imgY = padding;
-    textX = padding + imageWidth + gap;
-    // Vertically center text block
-    const textStartY = padding + (Math.max(imageHeight, textBlockHeight) - textBlockHeight) / 2;
-    textY = textStartY + fontSize1;
+    imgY = padding + topAdjust;
+    textX = padding + imageWidth + inlineGap;
+    textY = textY + topAdjust;
     textAnchor = 'start';
+
+    width = padding * 2 + imageWidth + inlineGap + textBlockWidth;
+    height = contentBottom + topAdjust + padding;
   }
 
   // Build SVG elements
@@ -320,7 +507,7 @@ function buildLogoSVG(scale, showIsolation = false, forExport = false) {
   }
 
   // Use both href and xlink:href for compatibility with different SVG viewers
-  svgContent.push(`<image x="${imgX}" y="${imgY}" width="${imageWidth}" height="${imageHeight}" href="${imageHref}" xlink:href="${imageHref}"/>`);
+  svgContent.push(`<image x="${imgX}" y="${imgY}" width="${imageWidth}" height="${actualImageHeight}" href="${imageHref}" xlink:href="${imageHref}"/>`);
 
   const fontBold = `font-family="Times New Roman, Times, serif" font-weight="bold" fill="${colors.fg}" text-anchor="${textAnchor}"`;
   const fontNormal = `font-family="Times New Roman, Times, serif" fill="${colors.fg}" text-anchor="${textAnchor}"`;
@@ -331,7 +518,11 @@ function buildLogoSVG(scale, showIsolation = false, forExport = false) {
   // Render stack: Line1 → gap → underline → gap → Line2 → Line3
 
   if (hasLine1) {
-    svgContent.push(`<text x="${textX}" y="${currentY}" font-size="${fontSize1}" ${fontBold}>${escapeXml(state.line1)}</text>`);
+    svgContent.push(`<text x="${textX}" y="${currentY}" font-size="${fontSize1}" ${fontBold}>${escapeXml(line1Lines[0])}</text>`);
+    for (let i = 1; i < line1Lines.length; i++) {
+      currentY += lineSpacing + fontSize1;
+      svgContent.push(`<text x="${textX}" y="${currentY}" font-size="${fontSize1}" ${fontBold}>${escapeXml(line1Lines[i])}</text>`);
+    }
   }
 
   if (hasUnderline) {
@@ -397,22 +588,29 @@ async function renderSVGToCanvas(svgString, canvas, width, height) {
 }
 
 let previewBlobUrl = null;
+let previewRenderToken = 0;
 
 async function renderPreview() {
+  // Rapid input events overlap here (async, shared canvas); the token makes
+  // sure only the latest render gets to set the preview image
+  const token = ++previewRenderToken;
+
   // 3x for crisp preview
   const scale = state.scale * 3;
   const { svg, width, height } = buildLogoSVG(scale, state.showIsolation);
   const canvas = elements.renderCanvas;
 
   await renderSVGToCanvas(svg, canvas, width, height);
+  if (token !== previewRenderToken) return;
+
+  // Create blob URL for better browser handling
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+  if (token !== previewRenderToken) return;
 
   // Revoke old blob URL to prevent memory leaks
   if (previewBlobUrl) {
     URL.revokeObjectURL(previewBlobUrl);
   }
-
-  // Create blob URL for better browser handling
-  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
   previewBlobUrl = URL.createObjectURL(blob);
   elements.previewImage.src = previewBlobUrl;
 }
@@ -452,15 +650,29 @@ function downloadBlob(blob, filename) {
   URL.revokeObjectURL(url);
 }
 
-async function exportRaster(format) {
-  // 8x for high-res export
-  const scale = state.scale * 8;
-  const { svg, width, height } = buildLogoSVG(scale, false);
-  const canvas = document.createElement('canvas');
+// Browsers silently fail (null blob / blank canvas) past ~16M pixels
+const MAX_EXPORT_PIXELS = 16000000;
 
+async function exportRaster(format) {
+  // 8x for high-res export; forExport = true swaps the coat of arms to its
+  // PNG version, which Safari needs to draw the SVG onto a canvas at all
+  let scale = state.scale * 8;
+  let { svg, width, height } = buildLogoSVG(scale, false, true);
+
+  // Clamp to the canvas pixel budget rather than exporting a blank image
+  if (width * height > MAX_EXPORT_PIXELS) {
+    scale *= Math.sqrt(MAX_EXPORT_PIXELS / (width * height));
+    ({ svg, width, height } = buildLogoSVG(scale, false, true));
+  }
+
+  const canvas = document.createElement('canvas');
   await renderSVGToCanvas(svg, canvas, width, height);
 
   canvas.toBlob((blob) => {
+    if (!blob) {
+      alert('Export failed - try a smaller scale.');
+      return;
+    }
     const ext = format === 'jpeg' ? 'jpg' : 'png';
     downloadBlob(blob, `${generateFilename()}.${ext}`);
   }, `image/${format}`, format === 'jpeg' ? 0.95 : undefined);
@@ -527,8 +739,11 @@ elements.imageUpload.addEventListener('change', (e) => {
 });
 
 elements.resetImage.addEventListener('click', () => {
-  state.customImage = null;
-  state.customImageType = null;
+  // Reset to default image
+  state.image = state.defaultImage;
+  state.imageAspect = state.defaultImageAspect;
+  state.imagePng = state.defaultImagePng;
+  state.imageBaseline = state.defaultImageBaseline;
   elements.imageUpload.value = '';
   renderPreview();
 });
@@ -588,4 +803,4 @@ state.reverse = elements.reverseMode.checked;
 state.showIsolation = elements.showIsolation.checked;
 
 updateTextModeUI();
-loadDefaultCoA();
+loadDefaultImage();

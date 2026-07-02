@@ -54,7 +54,8 @@ body {
 }
 
 .control-group input[type="text"],
-.control-group select {
+.control-group select,
+.control-group textarea {
   width: 100%;
   padding: 10px 12px;
   border: 2px solid #4A7C2F;
@@ -62,16 +63,27 @@ body {
   font-size: 14px;
   transition: border-color 0.2s;
   background: #fff;
+  font-family: inherit;
+}
+
+.control-group textarea {
+  resize: none;
+  height: 3.5em;
+  overflow-y: auto;
+  line-height: 1.2;
+  padding: 6px 10px;
 }
 
 .control-group input[type="text"]:focus,
-.control-group select:focus {
+.control-group select:focus,
+.control-group textarea:focus {
   outline: none;
   border-color: #4A7C2F;
   box-shadow: 0 0 0 2px rgba(74, 124, 47, 0.3);
 }
 
-.control-group input[type="text"]:disabled {
+.control-group input[type="text"]:disabled,
+.control-group textarea:disabled {
   background: #e9ecef;
   color: #6c757d;
 }
@@ -250,7 +262,9 @@ body {
 
 #previewImage {
   max-width: 100%;
+  max-height: calc(100vh - 160px);
   height: auto;
+  object-fit: contain;
   cursor: pointer;
 }
 
@@ -258,6 +272,18 @@ body {
   font-size: 12px;
   color: #888;
   margin: 0;
+}
+
+.footer-note {
+  font-size: 11px;
+  color: #888;
+  margin-top: 16px;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.footer-note a {
+  color: #4A7C2F;
 }
 
 /* Utilities */
