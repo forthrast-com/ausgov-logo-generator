@@ -116,7 +116,7 @@ Left sidebar or top panel with:
 1. **Layout variant** — dropdown: Inline / Inline Strip / Stacked / Stacked Strip
 2. **Text mode** — dropdown: Department / Government Only / Initiative / Hierarchy
 3. **Line 1 text** — input (locked to "Australian Government" in Department/Hierarchy modes; editable in others)
-4. **Line 2 text** — input (department name, default: "Department of Example")
+4. **Line 2 text** — input (department name, default: "Department of Posting")
 5. **Line 3 text** — input (division name, only visible in Hierarchy mode)
 6. **Logo colour** — colour picker (single colour for all elements, default: #000000)
 7. **Reverse mode** — toggle checkbox

@@ -132,7 +132,7 @@ const DEFAULTS = {
   layout: 'inline',
   textMode: 'department',
   line1: 'Australian Government',
-  line2: 'Department of Example',
+  line2: 'Department of Posting',
   line3: 'Division Name',
   logoColor: '#000000',
   bgColor: '#ffffff',
